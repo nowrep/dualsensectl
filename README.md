@@ -10,6 +10,7 @@ Linux tool for controlling Sony PlayStation 5 DualSense controller.
       lightbar RED GREEN BLUE [BRIGHTNESS]     Set lightbar color and brightness (0-255)
       player-leds NUMBER                       Set player LEDs (1-5) or disabled (0)
       microphone STATE                         Enable (on) or disable (off) microphone
+      microphone-led STATE                     Enable (on) or disable (off) microphone LED
 
 
 ### Dependencies
@@ -23,7 +24,7 @@ Linux tool for controlling Sony PlayStation 5 DualSense controller.
     
 ### udev rules
 
-Already installed by Steam, so you may already have it configured. If not, create `/etc/udev/rules.d/70-dualsensectl.rules`:
+Also installed by Steam, so you may already have it configured. If not, create `/etc/udev/rules.d/70-dualsensectl.rules`:
 
     # PS5 DualSense controller over USB hidraw
     KERNEL=="hidraw*", ATTRS{idVendor}=="054c", ATTRS{idProduct}=="0ce6", MODE="0660", TAG+="uaccess"

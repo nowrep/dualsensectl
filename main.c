@@ -393,6 +393,27 @@ static int command_microphone(struct dualsense *ds, char *state)
     return 0;
 }
 
+static int command_microphone_led(struct dualsense *ds, char *state)
+{
+    struct dualsense_output_report rp;
+    uint8_t rbuf[DS_OUTPUT_REPORT_BT_SIZE];
+    dualsense_init_output_report(ds, &rp, rbuf);
+
+    rp.common->valid_flag1 = DS_OUTPUT_VALID_FLAG1_MIC_MUTE_LED_CONTROL_ENABLE;
+    if (!strcmp(state, "on")) {
+        rp.common->mute_button_led = 1;
+    } else if (!strcmp(state, "off")) {
+        rp.common->mute_button_led = 0;
+    } else {
+        fprintf(stderr, "Invalid state\n");
+        return 1;
+    }
+
+    dualsense_send_output_report(ds, &rp);
+
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
     if (argc < 2) {
@@ -404,6 +425,7 @@ int main(int argc, char *argv[])
         printf("  lightbar RED GREEN BLUE [BRIGHTNESS]     Set lightbar color and brightness (0-255)\n");
         printf("  player-leds NUMBER                       Set player LEDs (1-5) or disabled (0)\n");
         printf("  microphone STATE                         Enable (on) or disable (off) microphone\n");
+        printf("  microphone-led STATE                     Enable (on) or disable (off) microphone LED\n");
         return 1;
     }
 
@@ -436,6 +458,12 @@ int main(int argc, char *argv[])
             return 2;
         }
         return command_microphone(&ds, argv[2]);
+    } else if (!strcmp(argv[1], "microphone-led")) {
+        if (argc != 3) {
+            fprintf(stderr, "Invalid arguments\n");
+            return 2;
+        }
+        return command_microphone_led(&ds, argv[2]);
     } else {
         fprintf(stderr, "Invalid command\n");
         return 2;
