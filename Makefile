@@ -6,8 +6,6 @@ LIBS   += $(shell pkg-config --libs dbus-1)
 LIBS   += $(shell pkg-config --libs hidapi-hidraw)
 
 TARGET = dualsensectl
-DEL_FILE = rm -f
-INSTALL_PROGRAM = install -m 755 -p
 
 ifeq ($(BUILD),debug)
 CFLAGS += -O0 -g
