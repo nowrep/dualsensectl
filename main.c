@@ -189,6 +189,7 @@ static bool dualsense_init(struct dualsense *ds)
     }
 
     uint8_t buf[DS_FEATURE_REPORT_PAIRING_INFO_SIZE];
+    memset(buf, 0, sizeof(buf));
     buf[0] = DS_FEATURE_REPORT_PAIRING_INFO;
     int res = hid_get_feature_report(ds->dev, buf, sizeof(buf));
     if (res != sizeof(buf)) {
@@ -197,7 +198,7 @@ static bool dualsense_init(struct dualsense *ds)
     }
 
     memcpy(ds->mac_address, &buf[1], sizeof(ds->mac_address));
-    ds->bt = (uint32_t)buf[16] != 0;
+    ds->bt = *(uint32_t*)&buf[16] != 0;
 
     return true;
 }
@@ -235,14 +236,14 @@ static bool dualsense_bt_disconnect(struct dualsense *ds)
     DBusMessageIter dict_kv;
     char *ds_path = NULL;
     char *path, *iface, *prop;
-    while (objects_count--) {
+    while (objects_count-- && !ds_path) {
         dbus_message_iter_recurse(&dict_entry, &dict_kv);
         dbus_message_iter_get_basic(&dict_kv, &path);
         dbus_message_iter_next(&dict_kv);
         int ifaces_count = dbus_message_iter_get_element_count(&dict_kv);
         DBusMessageIter ifacedict_entry, ifacedict_kv;
         dbus_message_iter_recurse(&dict_kv, &ifacedict_entry);
-        while (ifaces_count--) {
+        while (ifaces_count-- && !ds_path) {
             dbus_message_iter_recurse(&ifacedict_entry, &ifacedict_kv);
             dbus_message_iter_get_basic(&ifacedict_kv, &iface);
             if (!strcmp(iface, "org.bluez.Device1")) {
@@ -251,25 +252,24 @@ static bool dualsense_bt_disconnect(struct dualsense *ds)
                 DBusMessageIter propdict_entry, propdict_kv;
                 dbus_message_iter_recurse(&ifacedict_kv, &propdict_entry);
                 char *address = NULL;
-                bool connected = 0;
-                while (props_count--) {
+                int connected = 0;
+                while (props_count-- && !ds_path) {
                     dbus_message_iter_recurse(&propdict_entry, &propdict_kv);
                     dbus_message_iter_get_basic(&propdict_kv, &prop);
                     DBusMessageIter variant;
-                    if (!strcmp(prop, "Connected")) {
-                        dbus_message_iter_next(&propdict_kv);
-                        dbus_message_iter_recurse(&propdict_kv, &variant);
-                        dbus_message_iter_get_basic(&variant, &connected);
-                    } else if (!strcmp(prop, "Address")) {
+                    if (!strcmp(prop, "Address")) {
                         dbus_message_iter_next(&propdict_kv);
                         dbus_message_iter_recurse(&propdict_kv, &variant);
                         dbus_message_iter_get_basic(&variant, &address);
+                    } else if (!strcmp(prop, "Connected")) {
+                        dbus_message_iter_next(&propdict_kv);
+                        dbus_message_iter_recurse(&propdict_kv, &variant);
+                        dbus_message_iter_get_basic(&variant, &connected);
                     }
                     dbus_message_iter_next(&propdict_entry);
                 }
-                if (!strcmp(address, ds_mac) && connected && !ds_path) {
+                if (connected && address && !strcmp(address, ds_mac) && !ds_path) {
                     ds_path = path;
-                    break;
                 }
             }
             dbus_message_iter_next(&ifacedict_entry);
