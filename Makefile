@@ -20,7 +20,7 @@ debug:
 	make "BUILD=debug"
 
 install: all
-	install -m 755 -p $(TARGET) /usr/bin/$(TARGET)
+	install -D -m 755 -p $(TARGET) $(DESTDIR)/usr/bin/$(TARGET)
 
 uninstall:
-	rm -f /usr/bin/$(TARGET)
+	rm -f $(DESTDIR)/usr/bin/$(TARGET)
