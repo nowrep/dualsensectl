@@ -414,19 +414,29 @@ static int command_microphone_led(struct dualsense *ds, char *state)
     return 0;
 }
 
+static void print_help()
+{
+    printf("Usage: dualsensectl command [ARGS]\n");
+    printf("\n");
+    printf("Commands:\n");
+    printf("  power-off                                Turn off the controller (BT only)\n");
+    printf("  lightbar STATE                           Enable (on) or disable (off) lightbar\n");
+    printf("  lightbar RED GREEN BLUE [BRIGHTNESS]     Set lightbar color and brightness (0-255)\n");
+    printf("  player-leds NUMBER                       Set player LEDs (1-5) or disabled (0)\n");
+    printf("  microphone STATE                         Enable (on) or disable (off) microphone\n");
+    printf("  microphone-led STATE                     Enable (on) or disable (off) microphone LED\n");
+}
+
 int main(int argc, char *argv[])
 {
     if (argc < 2) {
-        printf("Usage: dualsensectl command [ARGS]\n");
-        printf("\n");
-        printf("Commands:\n");
-        printf("  power-off                                Turn off the controller (BT only)\n");
-        printf("  lightbar STATE                           Enable (on) or disable (off) lightbar\n");
-        printf("  lightbar RED GREEN BLUE [BRIGHTNESS]     Set lightbar color and brightness (0-255)\n");
-        printf("  player-leds NUMBER                       Set player LEDs (1-5) or disabled (0)\n");
-        printf("  microphone STATE                         Enable (on) or disable (off) microphone\n");
-        printf("  microphone-led STATE                     Enable (on) or disable (off) microphone LED\n");
+        print_help();
         return 1;
+    }
+
+    if (!strcmp(argv[1], "-h") || !strcmp(argv[1], "--help")) {
+        print_help();
+        return 0;
     }
 
     struct dualsense ds;
