@@ -6,6 +6,7 @@ LIBS   += $(shell pkg-config --libs dbus-1)
 LIBS   += $(shell pkg-config --libs hidapi-hidraw)
 
 TARGET = dualsensectl
+VERSION = 0.099
 
 ifeq ($(BUILD),debug)
 CFLAGS += -O0 -g
@@ -13,8 +14,10 @@ else
 CFLAGS += -O2 -s -DNDEBUG
 endif
 
+DEFINES += -DDUALSENSECTL_VERSION=\"$(VERSION)\"
+
 all:
-	$(CC) -o $(TARGET) $(CFLAGS) $(LIBS) main.c
+	$(CC) -o $(TARGET) $(DEFINES) $(CFLAGS) $(LIBS) main.c
 
 debug:
 	make "BUILD=debug"

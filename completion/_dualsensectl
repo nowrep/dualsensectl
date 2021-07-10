@@ -19,4 +19,5 @@ _dualsensectl_commands(){
 
 _arguments \
     '--help[Print help text]' \
+    '--version[Print version number]' \
     '*::dualsensectl commands:_dualsensectl_commands'

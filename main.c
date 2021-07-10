@@ -427,6 +427,11 @@ static void print_help()
     printf("  microphone-led STATE                     Enable (on) or disable (off) microphone LED\n");
 }
 
+static void print_version()
+{
+    printf("%s\n", DUALSENSECTL_VERSION);
+}
+
 int main(int argc, char *argv[])
 {
     if (argc < 2) {
@@ -436,6 +441,9 @@ int main(int argc, char *argv[])
 
     if (!strcmp(argv[1], "-h") || !strcmp(argv[1], "--help")) {
         print_help();
+        return 0;
+    } else if (!strcmp(argv[1], "-v") || !strcmp(argv[1], "--version")) {
+        print_version();
         return 0;
     }
 
