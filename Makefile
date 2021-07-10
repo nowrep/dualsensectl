@@ -21,6 +21,10 @@ debug:
 
 install: all
 	install -D -m 755 -p $(TARGET) $(DESTDIR)/usr/bin/$(TARGET)
+	install -D -m 644 -p completion/$(TARGET) $(DESTDIR)/usr/share/bash-completion/completions/$(TARGET)
+	install -D -m 644 -p completion/_$(TARGET) $(DESTDIR)/usr/share/zsh/site-functions/_$(TARGET)
 
 uninstall:
 	rm -f $(DESTDIR)/usr/bin/$(TARGET)
+	rm -f $(DESTDIR)/usr/share/bash-completion/completions/$(TARGET)
+	rm -f $(DESTDIR)/usr/share/zsh/site-functions/_$(TARGET)

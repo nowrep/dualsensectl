@@ -1,0 +1,22 @@
+#compdef dualsensectl
+
+(( $+functions[_dualsensectl_commands] )) ||
+_dualsensectl_commands(){
+    local -a _dualsensectl_cmds
+
+    _dualsensectl_cmds=(
+        'power-off:turn off the controller'
+        'lightbar:control the lightbar'
+        'player-leds:control the player LEDs'
+        'microphone:enable or disable microphone'
+        'microphone-led:control the microphone LED'
+        )
+
+    if ((CURRENT == 1)); then
+        _describe -t commands 'dualsensectl commands' _dualsensectl_cmds
+    fi
+}
+
+_arguments \
+    '--help[Print help text]' \
+    '*::dualsensectl commands:_dualsensectl_commands'
