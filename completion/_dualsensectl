@@ -6,6 +6,7 @@ _dualsensectl_commands(){
 
     _dualsensectl_cmds=(
         'power-off:turn off the controller'
+        'battery:get controller battery level'
         'lightbar:control the lightbar'
         'player-leds:control the player LEDs'
         'microphone:enable or disable microphone'

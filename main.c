@@ -293,6 +293,84 @@ static bool dualsense_bt_disconnect(struct dualsense *ds)
     return true;
 }
 
+static bool dualsense_bt_battery(struct dualsense *ds, int *battery)
+{
+    char ds_mac[18];
+    snprintf(ds_mac, 18, "%.2x:%.2x:%.2x:%.2x:%.2x:%.2x", ds->mac_address[5], ds->mac_address[4], ds->mac_address[3],
+             ds->mac_address[2], ds->mac_address[1], ds->mac_address[0]);
+
+    DBusError err;
+    dbus_error_init(&err);
+    DBusConnection *conn = dbus_bus_get(DBUS_BUS_SYSTEM, &err);
+    if (dbus_error_is_set(&err)) {
+        fprintf(stderr, "Failed to connect to DBus daemon: %s %s\n", err.name, err.message);
+        return false;
+    }
+    DBusMessage *msg = dbus_message_new_method_call("org.freedesktop.UPower", "/org/freedesktop/UPower", "org.freedesktop.UPower", "EnumerateDevices");
+    DBusMessage *reply = dbus_connection_send_with_reply_and_block(conn, msg, -1, &err);
+    dbus_message_unref(msg);
+    if (dbus_error_is_set(&err)) {
+        fprintf(stderr, "Failed to enumerate UPower devices: %s %s\n", err.name, err.message);
+        return false;
+    }
+    DBusMessageIter array;
+    dbus_message_iter_init(reply, &array);
+    DBusMessageIter string;
+    dbus_message_iter_recurse(&array, &string);
+    int ds_percentage = -1;
+    do {
+        char *path;
+        dbus_message_iter_get_basic(&string, &path);
+        DBusMessage *msg = dbus_message_new_method_call("org.freedesktop.UPower", path, "org.freedesktop.DBus.Properties", "GetAll");
+        DBusMessageIter iter;
+        dbus_message_iter_init_append(msg, &iter);
+        const char *iface = "org.freedesktop.UPower.Device";
+        dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &iface);
+        DBusMessage *reply = dbus_connection_send_with_reply_and_block(conn, msg, -1, &err);
+        dbus_message_unref(msg);
+        if (dbus_error_is_set(&err)) {
+            fprintf(stderr, "Failed to get device properties: %s %s\n", err.name, err.message);
+            return false;
+        }
+        DBusMessageIter array;
+        dbus_message_iter_init(reply, &array);
+        DBusMessageIter kv;
+        dbus_message_iter_recurse(&array, &kv);
+        int type = -1;
+        double percent = -1;
+        char *serial = NULL;
+        do {
+            DBusMessageIter key;
+            DBusMessageIter value;
+            dbus_message_iter_recurse(&kv, &key);
+            char *prop;
+            dbus_message_iter_get_basic(&key, &prop);
+            dbus_message_iter_next(&key);
+            dbus_message_iter_recurse(&key, &value);
+            if (!strcmp(prop, "Type")) {
+                dbus_message_iter_get_basic(&value, &type);
+            } else if (!strcmp(prop, "Percentage")) {
+                dbus_message_iter_get_basic(&value, &percent);
+            } else if (!strcmp(prop, "Serial")) {
+                dbus_message_iter_get_basic(&value, &serial);
+            }
+        } while (dbus_message_iter_next(&kv));
+        dbus_message_unref(reply);
+        if (type == 12 && !strcmp(serial, ds_mac)) {
+            ds_percentage = percent;
+            break;
+        }
+    } while (dbus_message_iter_next(&string));
+    dbus_message_unref(reply);
+    dbus_connection_unref(conn);
+    if (ds_percentage < 0) {
+        fprintf(stderr, "Failed to find UPower device\n");
+        return false;
+    }
+    *battery = ds_percentage;
+    return true;
+}
+
 static int command_power_off(struct dualsense *ds)
 {
     if (!ds->bt) {
@@ -302,6 +380,20 @@ static int command_power_off(struct dualsense *ds)
     if (!dualsense_bt_disconnect(ds)) {
         return 2;
     }
+    return 0;
+}
+
+static int command_battery(struct dualsense *ds)
+{
+    if (!ds->bt) {
+        fprintf(stderr, "Controller is not connected via BT\n");
+        return 1;
+    }
+    int battery = 0;
+    if (!dualsense_bt_battery(ds, &battery)) {
+        return 2;
+    }
+    printf("%d\n", battery);
     return 0;
 }
 
@@ -420,6 +512,7 @@ static void print_help()
     printf("\n");
     printf("Commands:\n");
     printf("  power-off                                Turn off the controller (BT only)\n");
+    printf("  battery                                  Get controller battery level (BT only)\n");
     printf("  lightbar STATE                           Enable (on) or disable (off) lightbar\n");
     printf("  lightbar RED GREEN BLUE [BRIGHTNESS]     Set lightbar color and brightness (0-255)\n");
     printf("  player-leds NUMBER                       Set player LEDs (1-5) or disabled (0)\n");
@@ -454,6 +547,8 @@ int main(int argc, char *argv[])
 
     if (!strcmp(argv[1], "power-off")) {
         return command_power_off(&ds);
+    } else if (!strcmp(argv[1], "battery")) {
+        return command_battery(&ds);
     } else if (!strcmp(argv[1], "lightbar")) {
         if (argc == 3) {
             return command_lightbar1(&ds, argv[2]);

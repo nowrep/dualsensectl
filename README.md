@@ -6,6 +6,7 @@ Linux tool for controlling Sony PlayStation 5 DualSense controller.
 
     Commands:
       power-off                                Turn off the controller (BT only)
+      battery                                  Get controller battery level (BT only)
       lightbar STATE                           Enable (on) or disable (off) lightbar
       lightbar RED GREEN BLUE [BRIGHTNESS]     Set lightbar color and brightness (0-255)
       player-leds NUMBER                       Set player LEDs (1-5) or disabled (0)
