@@ -57,6 +57,42 @@
 #define DS_OUTPUT_LIGHTBAR_SETUP_LIGHT_ON BIT(0)
 #define DS_OUTPUT_LIGHTBAR_SETUP_LIGHT_OUT BIT(1)
 
+/* Status field of DualSense input report. */
+#define GENMASK(h, l) (((~0UL) << (l)) & (~0UL >> (32 - 1 - (h))))
+#define DS_STATUS_BATTERY_CAPACITY GENMASK(3, 0)
+#define DS_STATUS_CHARGING GENMASK(7, 4)
+#define DS_STATUS_CHARGING_SHIFT 4
+
+struct dualsense_touch_point {
+    uint8_t contact;
+    uint8_t x_lo;
+    uint8_t x_hi:4, y_lo:4;
+    uint8_t y_hi;
+} __attribute__((packed));
+
+/* Main DualSense input report excluding any BT/USB specific headers. */
+struct dualsense_input_report {
+    uint8_t x, y;
+    uint8_t rx, ry;
+    uint8_t z, rz;
+    uint8_t seq_number;
+    uint8_t buttons[4];
+    uint8_t reserved[4];
+
+    /* Motion sensors */
+    uint16_t gyro[3]; /* x, y, z */
+    uint16_t accel[3]; /* x, y, z */
+    uint32_t sensor_timestamp;
+    uint8_t reserved2;
+
+    /* Touchpad */
+    struct dualsense_touch_point points[2];
+
+    uint8_t reserved3[12];
+    uint8_t status;
+    uint8_t reserved4[10];
+} __attribute__((packed));
+
 /* Common data between DualSense BT/USB main output report. */
 struct dualsense_output_report_common {
     uint8_t valid_flag0;
@@ -293,84 +329,6 @@ static bool dualsense_bt_disconnect(struct dualsense *ds)
     return true;
 }
 
-static bool dualsense_bt_battery(struct dualsense *ds, int *battery)
-{
-    char ds_mac[18];
-    snprintf(ds_mac, 18, "%.2x:%.2x:%.2x:%.2x:%.2x:%.2x", ds->mac_address[5], ds->mac_address[4], ds->mac_address[3],
-             ds->mac_address[2], ds->mac_address[1], ds->mac_address[0]);
-
-    DBusError err;
-    dbus_error_init(&err);
-    DBusConnection *conn = dbus_bus_get(DBUS_BUS_SYSTEM, &err);
-    if (dbus_error_is_set(&err)) {
-        fprintf(stderr, "Failed to connect to DBus daemon: %s %s\n", err.name, err.message);
-        return false;
-    }
-    DBusMessage *msg = dbus_message_new_method_call("org.freedesktop.UPower", "/org/freedesktop/UPower", "org.freedesktop.UPower", "EnumerateDevices");
-    DBusMessage *reply = dbus_connection_send_with_reply_and_block(conn, msg, -1, &err);
-    dbus_message_unref(msg);
-    if (dbus_error_is_set(&err)) {
-        fprintf(stderr, "Failed to enumerate UPower devices: %s %s\n", err.name, err.message);
-        return false;
-    }
-    DBusMessageIter array;
-    dbus_message_iter_init(reply, &array);
-    DBusMessageIter string;
-    dbus_message_iter_recurse(&array, &string);
-    int ds_percentage = -1;
-    do {
-        char *path;
-        dbus_message_iter_get_basic(&string, &path);
-        DBusMessage *msg = dbus_message_new_method_call("org.freedesktop.UPower", path, "org.freedesktop.DBus.Properties", "GetAll");
-        DBusMessageIter iter;
-        dbus_message_iter_init_append(msg, &iter);
-        const char *iface = "org.freedesktop.UPower.Device";
-        dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &iface);
-        DBusMessage *reply = dbus_connection_send_with_reply_and_block(conn, msg, -1, &err);
-        dbus_message_unref(msg);
-        if (dbus_error_is_set(&err)) {
-            fprintf(stderr, "Failed to get device properties: %s %s\n", err.name, err.message);
-            return false;
-        }
-        DBusMessageIter array;
-        dbus_message_iter_init(reply, &array);
-        DBusMessageIter kv;
-        dbus_message_iter_recurse(&array, &kv);
-        int type = -1;
-        double percent = -1;
-        char *serial = NULL;
-        do {
-            DBusMessageIter key;
-            DBusMessageIter value;
-            dbus_message_iter_recurse(&kv, &key);
-            char *prop;
-            dbus_message_iter_get_basic(&key, &prop);
-            dbus_message_iter_next(&key);
-            dbus_message_iter_recurse(&key, &value);
-            if (!strcmp(prop, "Type")) {
-                dbus_message_iter_get_basic(&value, &type);
-            } else if (!strcmp(prop, "Percentage")) {
-                dbus_message_iter_get_basic(&value, &percent);
-            } else if (!strcmp(prop, "Serial")) {
-                dbus_message_iter_get_basic(&value, &serial);
-            }
-        } while (dbus_message_iter_next(&kv));
-        dbus_message_unref(reply);
-        if (type == 12 && !strcmp(serial, ds_mac)) {
-            ds_percentage = percent;
-            break;
-        }
-    } while (dbus_message_iter_next(&string));
-    dbus_message_unref(reply);
-    dbus_connection_unref(conn);
-    if (ds_percentage < 0) {
-        fprintf(stderr, "Failed to find UPower device\n");
-        return false;
-    }
-    *battery = ds_percentage;
-    return true;
-}
-
 static int command_power_off(struct dualsense *ds)
 {
     if (!ds->bt) {
@@ -385,15 +343,65 @@ static int command_power_off(struct dualsense *ds)
 
 static int command_battery(struct dualsense *ds)
 {
-    if (!ds->bt) {
-        fprintf(stderr, "Controller is not connected via BT\n");
-        return 1;
-    }
-    int battery = 0;
-    if (!dualsense_bt_battery(ds, &battery)) {
+    uint8_t data[DS_INPUT_REPORT_BT_SIZE];
+    int res = hid_read_timeout(ds->dev, data, sizeof(data), 1000);
+    if (res <= 0) {
+        if (res == 0) {
+            fprintf(stderr, "Timeout waiting for report\n");
+        } else {
+            fprintf(stderr, "Failed to read report %ls\n", hid_error(ds->dev));
+        }
         return 2;
     }
-    printf("%d\n", battery);
+
+    struct dualsense_input_report *ds_report;
+
+    if (!ds->bt && data[0] == DS_INPUT_REPORT_USB && res == DS_INPUT_REPORT_USB_SIZE) {
+        ds_report = (struct dualsense_input_report *)&data[1];
+    } else if (ds->bt && data[0] == DS_INPUT_REPORT_BT && res == DS_INPUT_REPORT_BT_SIZE) {
+        /* Last 4 bytes of input report contain crc32 */
+        /* uint32_t report_crc = *(uint32_t*)&data[res - 4]; */
+        ds_report = (struct dualsense_input_report *)&data[2];
+    } else {
+        fprintf(stderr, "Unhandled report ID %d\n", (int)data[0]);
+        return 3;
+    }
+
+    uint8_t battery_capacity;
+    uint8_t battery_data = ds_report->status & DS_STATUS_BATTERY_CAPACITY;
+    uint8_t charging_status = (ds_report->status & DS_STATUS_CHARGING) >> DS_STATUS_CHARGING_SHIFT;
+
+#define min(a, b) ((a) < (b) ? (a) : (b))
+    switch (charging_status) {
+    case 0x0:
+        /*
+         * Each unit of battery data corresponds to 10%
+         * 0 = 0-9%, 1 = 10-19%, .. and 10 = 100%
+         */
+        battery_capacity = min(battery_data * 10 + 5, 100);
+        /* battery_status = POWER_SUPPLY_STATUS_DISCHARGING; */
+        break;
+    case 0x1:
+        battery_capacity = min(battery_data * 10 + 5, 100);
+        /* battery_status = POWER_SUPPLY_STATUS_CHARGING; */
+        break;
+    case 0x2:
+        battery_capacity = 100;
+        /* battery_status = POWER_SUPPLY_STATUS_FULL; */
+        break;
+    case 0xa: /* voltage or temperature out of range */
+    case 0xb: /* temperature error */
+        battery_capacity = 0;
+        /* battery_status = POWER_SUPPLY_STATUS_NOT_CHARGING; */
+        break;
+    case 0xf: /* charging error */
+    default:
+        battery_capacity = 0;
+        /* battery_status = POWER_SUPPLY_STATUS_UNKNOWN; */
+    }
+#undef min
+
+    printf("%d\n", (int)battery_capacity);
     return 0;
 }
 
@@ -512,7 +520,7 @@ static void print_help()
     printf("\n");
     printf("Commands:\n");
     printf("  power-off                                Turn off the controller (BT only)\n");
-    printf("  battery                                  Get controller battery level (BT only)\n");
+    printf("  battery                                  Get the controller battery level\n");
     printf("  lightbar STATE                           Enable (on) or disable (off) lightbar\n");
     printf("  lightbar RED GREEN BLUE [BRIGHTNESS]     Set lightbar color and brightness (0-255)\n");
     printf("  player-leds NUMBER                       Set player LEDs (1-5) or disabled (0)\n");
