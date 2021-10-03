@@ -17,7 +17,7 @@ endif
 DEFINES += -DDUALSENSECTL_VERSION=\"$(VERSION)\"
 
 all:
-	$(CC) -o $(TARGET) $(DEFINES) $(CFLAGS) $(LIBS) main.c
+	$(CC) main.c -o $(TARGET) $(DEFINES) $(CFLAGS) $(LIBS)
 
 debug:
 	make "BUILD=debug"
