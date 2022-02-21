@@ -14,6 +14,8 @@ Linux tool for controlling Sony PlayStation 5 DualSense controller.
       microphone-led STATE                     Enable (on) or disable (off) microphone LED
 
 
+AUR: [dualsensectl-git](https://aur.archlinux.org/packages/dualsensectl-git/)
+
 ### Dependencies
 
 * libhidapi-hidraw
@@ -22,7 +24,7 @@ Linux tool for controlling Sony PlayStation 5 DualSense controller.
 ### Building
 
     make && make install
-    
+
 ### udev rules
 
 Also installed by Steam, so you may already have it configured. If not, create `/etc/udev/rules.d/70-dualsensectl.rules`:
