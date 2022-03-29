@@ -414,6 +414,7 @@ static int command_battery(struct dualsense *ds)
         return 3;
     }
 
+    const char *battery_status;
     uint8_t battery_capacity;
     uint8_t battery_data = ds_report->status & DS_STATUS_BATTERY_CAPACITY;
     uint8_t charging_status = (ds_report->status & DS_STATUS_CHARGING) >> DS_STATUS_CHARGING_SHIFT;
@@ -426,29 +427,29 @@ static int command_battery(struct dualsense *ds)
          * 0 = 0-9%, 1 = 10-19%, .. and 10 = 100%
          */
         battery_capacity = min(battery_data * 10 + 5, 100);
-        /* battery_status = POWER_SUPPLY_STATUS_DISCHARGING; */
+        battery_status = "discharging";
         break;
     case 0x1:
         battery_capacity = 100;
-        /* battery_status = POWER_SUPPLY_STATUS_FULL; */
+        battery_status = "full";
         break;
     case 0x2:
         battery_capacity = min(battery_data * 10 + 5, 100);
-        /* battery_status = POWER_SUPPLY_STATUS_CHARGING; */
+        battery_status = "charging";
         break;
     case 0xa: /* voltage or temperature out of range */
     case 0xb: /* temperature error */
         battery_capacity = 0;
-        /* battery_status = POWER_SUPPLY_STATUS_NOT_CHARGING; */
+        battery_status = "not-charging";
         break;
     case 0xf: /* charging error */
     default:
         battery_capacity = 0;
-        /* battery_status = POWER_SUPPLY_STATUS_UNKNOWN; */
+        battery_status = "unknown";
     }
 #undef min
 
-    printf("%d\n", (int)battery_capacity);
+    printf("%d %s\n", (int)battery_capacity, battery_status);
     return 0;
 }
 
