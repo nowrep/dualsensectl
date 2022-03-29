@@ -2,8 +2,13 @@
 
 Linux tool for controlling Sony PlayStation 5 DualSense controller.
 
-    Usage: dualsensectl command [ARGS]
+    Usage: dualsensectl [options] command [ARGS]
 
+    Options:
+      -l                                       List available devices
+      -d DEVICE                                Specify which device to use
+      -h --help                                Show this help message
+      -v --version                             Show version
     Commands:
       power-off                                Turn off the controller (BT only)
       battery                                  Get the controller battery level

@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 
 #include <dbus/dbus.h>
 #include <hidapi/hidapi.h>
@@ -154,7 +155,7 @@ struct dualsense_output_report {
 struct dualsense {
     bool bt;
     hid_device *dev;
-    uint8_t mac_address[6]; /* little endian order */
+    char mac_address[18];
     uint8_t output_seq;
 };
 
@@ -213,29 +214,80 @@ static void dualsense_send_output_report(struct dualsense *ds, struct dualsense_
     }
 }
 
-static bool dualsense_init(struct dualsense *ds)
+static bool compare_serial(const char *s, const wchar_t *dev)
 {
+    if (!s) {
+        return true;
+    }
+    const size_t len = wcslen(dev);
+    if (strlen(s) != len) {
+        return false;
+    }
+    for (size_t i = 0; i < len; ++i) {
+        if (s[i] != dev[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool dualsense_init(struct dualsense *ds, const char *serial)
+{
+    bool ret = false;
+
     memset(ds, 0, sizeof(*ds));
 
-    ds->dev = hid_open(DS_VENDOR_ID, DS_PRODUCT_ID, NULL);
+    bool found = false;
+    struct hid_device_info *devs = hid_enumerate(DS_VENDOR_ID, DS_PRODUCT_ID);
+    struct hid_device_info *dev = devs;
+    while (dev) {
+        if (compare_serial(serial, dev->serial_number)) {
+            found = true;
+            break;
+        }
+        dev = dev->next;
+    }
+
+    if (!found) {
+        if (serial) {
+            fprintf(stderr, "Device '%s' not found\n", serial);
+        } else {
+            fprintf(stderr, "No device found\n");
+        }
+        ret = false;
+        goto out;
+    }
+
+    if (wcslen(dev->serial_number) != 17) {
+        fprintf(stderr, "Invalid device serial number: %ls\n", dev->serial_number);
+        ret = false;
+        goto out;
+    }
+
+    ds->dev = hid_open(DS_VENDOR_ID, DS_PRODUCT_ID, dev->serial_number);
     if (!ds->dev) {
         fprintf(stderr, "Failed to open device: %ls\n", hid_error(NULL));
-        return false;
+        ret = false;
+        goto out;
     }
 
-    uint8_t buf[DS_FEATURE_REPORT_PAIRING_INFO_SIZE];
-    memset(buf, 0, sizeof(buf));
-    buf[0] = DS_FEATURE_REPORT_PAIRING_INFO;
-    int res = hid_get_feature_report(ds->dev, buf, sizeof(buf));
-    if (res != sizeof(buf)) {
-        fprintf(stderr, "Invalid feature report\n");
-        return false;
+    for (int i = 0; i < 18; ++i) {
+        char c = dev->serial_number[i];
+        if (c && (i + 1) % 3) {
+            c = toupper(c);
+        }
+        ds->mac_address[i] = c;
     }
 
-    memcpy(ds->mac_address, &buf[1], sizeof(ds->mac_address));
-    ds->bt = *(uint32_t*)&buf[16] != 0;
+    ds->bt = dev->interface_number == -1;
 
-    return true;
+    ret = true;
+
+out:
+    if (devs) {
+        hid_free_enumeration(devs);
+    }
+    return ret;
 }
 
 static void dualsense_destroy(struct dualsense *ds)
@@ -245,10 +297,6 @@ static void dualsense_destroy(struct dualsense *ds)
 
 static bool dualsense_bt_disconnect(struct dualsense *ds)
 {
-    char ds_mac[18];
-    snprintf(ds_mac, 18, "%.2X:%.2X:%.2X:%.2X:%.2X:%.2X", ds->mac_address[5], ds->mac_address[4], ds->mac_address[3],
-             ds->mac_address[2], ds->mac_address[1], ds->mac_address[0]);
-
     DBusError err;
     dbus_error_init(&err);
     DBusConnection *conn = dbus_bus_get(DBUS_BUS_SYSTEM, &err);
@@ -303,7 +351,7 @@ static bool dualsense_bt_disconnect(struct dualsense *ds)
                     }
                     dbus_message_iter_next(&propdict_entry);
                 }
-                if (connected && address && !strcmp(address, ds_mac) && !ds_path) {
+                if (connected && address && !strcmp(address, ds->mac_address) && !ds_path) {
                     ds_path = path;
                 }
             }
@@ -515,8 +563,13 @@ static int command_microphone_led(struct dualsense *ds, char *state)
 
 static void print_help()
 {
-    printf("Usage: dualsensectl command [ARGS]\n");
+    printf("Usage: dualsensectl [options] command [ARGS]\n");
     printf("\n");
+    printf("Options:\n");
+    printf("  -l                                       List available devices\n");
+    printf("  -d DEVICE                                Specify which device to use\n");
+    printf("  -h --help                                Show this help message\n");
+    printf("  -v --version                             Show version\n");
     printf("Commands:\n");
     printf("  power-off                                Turn off the controller (BT only)\n");
     printf("  battery                                  Get the controller battery level\n");
@@ -532,6 +585,22 @@ static void print_version()
     printf("%s\n", DUALSENSECTL_VERSION);
 }
 
+static int list_devices()
+{
+    struct hid_device_info *devs = hid_enumerate(DS_VENDOR_ID, DS_PRODUCT_ID);
+    if (!devs) {
+        fprintf(stderr, "No devices found\n");
+        return 1;
+    }
+    printf("Devices:\n");
+    struct hid_device_info *dev = devs;
+    while (dev) {
+        printf(" %ls (%s)\n", dev->serial_number, dev->interface_number == -1 ? "Bluetooth" : "USB");
+        dev = dev->next;
+    }
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
     if (argc < 2) {
@@ -539,16 +608,28 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    const char *dev_serial = NULL;
+
     if (!strcmp(argv[1], "-h") || !strcmp(argv[1], "--help")) {
         print_help();
         return 0;
     } else if (!strcmp(argv[1], "-v") || !strcmp(argv[1], "--version")) {
         print_version();
         return 0;
+    } else if (!strcmp(argv[1], "-l")) {
+        return list_devices();
+    } else if (!strcmp(argv[1], "-d")) {
+        if (argc < 3) {
+            print_help();
+            return 1;
+        }
+        dev_serial = argv[2];
+        argc -= 2;
+        argv += 2;
     }
 
     struct dualsense ds;
-    if (!dualsense_init(&ds)) {
+    if (!dualsense_init(&ds, dev_serial)) {
         return 1;
     }
 
