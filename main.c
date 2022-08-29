@@ -258,12 +258,6 @@ static bool dualsense_init(struct dualsense *ds, const char *serial)
         goto out;
     }
 
-    if (wcslen(dev->serial_number) != 17) {
-        fprintf(stderr, "Invalid device serial number: %ls\n", dev->serial_number);
-        ret = false;
-        goto out;
-    }
-
     ds->dev = hid_open(DS_VENDOR_ID, DS_PRODUCT_ID, dev->serial_number);
     if (!ds->dev) {
         fprintf(stderr, "Failed to open device: %ls\n", hid_error(NULL));
@@ -271,8 +265,16 @@ static bool dualsense_init(struct dualsense *ds, const char *serial)
         goto out;
     }
 
+    wchar_t *serial_number = dev->serial_number;
+
+    if (wcslen(serial_number) != 17) {
+        fprintf(stderr, "Invalid device serial number: %ls\n", serial_number);
+        // Let's just fake serial number as everything except disconnecting will still work
+        serial_number = L"00:00:00:00:00:00";
+    }
+
     for (int i = 0; i < 18; ++i) {
-        char c = dev->serial_number[i];
+        char c = serial_number[i];
         if (c && (i + 1) % 3) {
             c = toupper(c);
         }
@@ -596,7 +598,7 @@ static int list_devices()
     printf("Devices:\n");
     struct hid_device_info *dev = devs;
     while (dev) {
-        printf(" %ls (%s)\n", dev->serial_number, dev->interface_number == -1 ? "Bluetooth" : "USB");
+        printf(" %ls (%s)\n", dev->serial_number ? dev->serial_number : L"???", dev->interface_number == -1 ? "Bluetooth" : "USB");
         dev = dev->next;
     }
     return 0;
