@@ -26,9 +26,15 @@ AUR: [dualsensectl-git](https://aur.archlinux.org/packages/dualsensectl-git/)
 * libhidapi-hidraw
 * libdbus-1
 
+#### Installing dependencies on Fedora
+
+    sudo dnf install gcc hidapi-devel dbus-devel
+
 ### Building
 
-    make && make install
+Install dependencies first (see above), then run:
+
+    make && sudo make install
 
 ### udev rules
 
