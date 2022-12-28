@@ -432,12 +432,12 @@ static int command_battery(struct dualsense *ds)
         battery_status = "discharging";
         break;
     case 0x1:
-        battery_capacity = 100;
-        battery_status = "full";
-        break;
-    case 0x2:
         battery_capacity = min(battery_data * 10 + 5, 100);
         battery_status = "charging";
+        break;
+    case 0x2:
+        battery_capacity = 100;
+        battery_status = "full";
         break;
     case 0xa: /* voltage or temperature out of range */
     case 0xb: /* temperature error */
