@@ -7,6 +7,7 @@ Linux tool for controlling Sony PlayStation 5 DualSense controller.
     Options:
       -l                                       List available devices
       -d DEVICE                                Specify which device to use
+      -w                                       Wait for shell command to complete (monitor only)
       -h --help                                Show this help message
       -v --version                             Show version
     Commands:
@@ -17,6 +18,7 @@ Linux tool for controlling Sony PlayStation 5 DualSense controller.
       player-leds NUMBER                       Set player LEDs (1-5) or disabled (0)
       microphone STATE                         Enable (on) or disable (off) microphone
       microphone-led STATE                     Enable (on) or disable (off) microphone LED
+      monitor [add COMMAND] [remove COMMAND]   Run shell command COMMAND on add/remove events
 
 
 AUR: [dualsensectl-git](https://aur.archlinux.org/packages/dualsensectl-git/)
@@ -25,6 +27,7 @@ AUR: [dualsensectl-git](https://aur.archlinux.org/packages/dualsensectl-git/)
 
 * libhidapi-hidraw
 * libdbus-1
+* libudev
 
 ### Building
 

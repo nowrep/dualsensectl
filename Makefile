@@ -4,6 +4,7 @@ CFLAGS += $(shell pkg-config --cflags dbus-1)
 CFLAGS += $(shell pkg-config --cflags hidapi-hidraw)
 LIBS   += $(shell pkg-config --libs dbus-1)
 LIBS   += $(shell pkg-config --libs hidapi-hidraw)
+LIBS   += $(shell pkg-config --libs libudev)
 
 TARGET = dualsensectl
 VERSION = 0.2

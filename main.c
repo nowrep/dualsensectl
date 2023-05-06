@@ -12,9 +12,12 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <poll.h>
+#include <sys/wait.h>
 
 #include <dbus/dbus.h>
 #include <hidapi/hidapi.h>
+#include <libudev.h>
 
 #include "crc32.h"
 
@@ -564,6 +567,158 @@ static int command_microphone_led(struct dualsense *ds, char *state)
     return 0;
 }
 
+static bool sh_command_wait = false;
+static const char *sh_command_add = NULL;
+static const char *sh_command_remove = NULL;
+
+static void run_sh_command(const char *command, const char *serial_number)
+{
+    pid_t pid = fork();
+    if (pid == 0) {
+        if (!sh_command_wait) {
+            pid = fork();
+        }
+        if (pid == 0) {
+            setenv("DS_DEV", serial_number, 1);
+            system(command);
+            exit(1);
+        } else if (pid < 0) {
+            perror("fork");
+            exit(1);
+        }
+        exit(0);
+    } else if (pid < 0) {
+        perror("fork");
+    } else {
+        int status = 0;
+        waitpid(pid, &status, 0);
+    }
+}
+
+static uint32_t read_file_hex(const char *path)
+{
+    uint32_t out = 0;
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        return out;
+    }
+    fscanf(f, "%x", &out);
+    fclose(f);
+    return out;
+}
+
+static void read_file_str(const char *path, char *buf, size_t size)
+{
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        return;
+    }
+    fread(buf, size, 1, f);
+    buf[size - 1] = '\0';
+    fclose(f);
+}
+
+static bool check_dualsense_device(struct udev_device *dev, char serial_number[18])
+{
+    const char *path = udev_device_get_syspath(dev);
+    char *end = strrchr(path, '/');
+    if (!end || strncmp(end, "/event", 6)) {
+        return false;
+    }
+
+    const char *joystick = udev_device_get_property_value(dev, "ID_INPUT_JOYSTICK");
+    if (!joystick || strcmp(joystick, "1")) {
+        return false;
+    }
+
+    size_t baselen = end - path + 1;
+    char idpath[256];
+    strncpy(idpath, path, baselen);
+    idpath[baselen] = '\0';
+    char *baseend = idpath + baselen;
+
+    strcpy(baseend, "id/vendor");
+    uint32_t vendor = read_file_hex(idpath);
+
+    strcpy(baseend, "id/product");
+    uint32_t product = read_file_hex(idpath);
+
+    strcpy(baseend, "uniq");
+    read_file_str(idpath, serial_number, 18);
+
+    return vendor == DS_VENDOR_ID && product == DS_PRODUCT_ID;
+}
+
+static void add_device(struct udev_device *dev)
+{
+    char serial_number[18] = "00:00:00:00:00:00";
+    if (!check_dualsense_device(dev, serial_number)) {
+        return;
+    }
+    if (sh_command_add) {
+        run_sh_command(sh_command_add, serial_number);
+    }
+}
+
+static void remove_device(struct udev_device *dev)
+{
+    char serial_number[18] = "00:00:00:00:00:00";
+    if (!check_dualsense_device(dev, serial_number)) {
+        return;
+    }
+    if (sh_command_remove) {
+        run_sh_command(sh_command_remove, serial_number);
+    }
+}
+
+static int command_monitor(void)
+{
+    struct udev *u = udev_new();
+    struct udev_enumerate *enumerate = udev_enumerate_new(u);
+    udev_enumerate_add_match_subsystem(enumerate, "input");
+    udev_enumerate_scan_devices(enumerate);
+    struct udev_list_entry *devices = udev_enumerate_get_list_entry(enumerate);
+    struct udev_list_entry *dev_list_entry;
+    udev_list_entry_foreach(dev_list_entry, devices) {
+        const char *path = udev_list_entry_get_name(dev_list_entry);
+        struct udev_device *dev = udev_device_new_from_syspath(u, path);
+        add_device(dev);
+        udev_device_unref(dev);
+    }
+    udev_enumerate_unref(enumerate);
+
+    struct udev_monitor *monitor = udev_monitor_new_from_netlink(u, "udev");
+    udev_monitor_filter_add_match_subsystem_devtype(monitor, "input", NULL);
+    udev_monitor_enable_receiving(monitor);
+
+    struct pollfd fd;
+    fd.fd = udev_monitor_get_fd(monitor);
+    fd.events = POLLIN;
+
+    while (1) {
+        int ret = poll(&fd, 1, -1);
+        if (ret < 0) {
+            perror("poll");
+            break;
+        }
+        struct udev_device *dev = udev_monitor_receive_device(monitor);
+        if (!dev) {
+            continue;
+        }
+        if (!strcmp(udev_device_get_action(dev), "add")) {
+            add_device(dev);
+        } else if (!strcmp(udev_device_get_action(dev), "remove")) {
+            remove_device(dev);
+        }
+        udev_device_unref(dev);
+    }
+
+    udev_monitor_unref(monitor);
+    udev_unref(u);
+
+    return 0;
+}
+
 static void print_help(void)
 {
     printf("Usage: dualsensectl [options] command [ARGS]\n");
@@ -571,6 +726,7 @@ static void print_help(void)
     printf("Options:\n");
     printf("  -l                                       List available devices\n");
     printf("  -d DEVICE                                Specify which device to use\n");
+    printf("  -w                                       Wait for shell command to complete (monitor only)\n");
     printf("  -h --help                                Show this help message\n");
     printf("  -v --version                             Show version\n");
     printf("Commands:\n");
@@ -581,6 +737,7 @@ static void print_help(void)
     printf("  player-leds NUMBER                       Set player LEDs (1-5) or disabled (0)\n");
     printf("  microphone STATE                         Enable (on) or disable (off) microphone\n");
     printf("  microphone-led STATE                     Enable (on) or disable (off) microphone LED\n");
+    printf("  monitor [add COMMAND] [remove COMMAND]   Run shell command COMMAND on add/remove events\n");
 }
 
 static void print_version(void)
@@ -621,6 +778,33 @@ int main(int argc, char *argv[])
         return 0;
     } else if (!strcmp(argv[1], "-l")) {
         return list_devices();
+    } else if (!strcmp(argv[1], "monitor")) {
+        argc -= 2;
+        argv += 2;
+        while (argc) {
+            if (!strcmp(argv[0], "-w")) {
+                sh_command_wait = true;
+            } else if (!strcmp(argv[0], "add")) {
+                if (argc < 2) {
+                    print_help();
+                    return 1;
+                }
+                sh_command_add = argv[1];
+                argc -= 1;
+                argv += 1;
+            } else if (!strcmp(argv[0], "remove")) {
+                if (argc < 2) {
+                    print_help();
+                    return 1;
+                }
+                sh_command_remove = argv[1];
+                argc -= 1;
+                argv += 1;
+            }
+            argc -= 1;
+            argv += 1;
+        }
+        return command_monitor();
     } else if (!strcmp(argv[1], "-d")) {
         if (argc < 3) {
             print_help();
