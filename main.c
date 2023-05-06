@@ -564,7 +564,7 @@ static int command_microphone_led(struct dualsense *ds, char *state)
     return 0;
 }
 
-static void print_help()
+static void print_help(void)
 {
     printf("Usage: dualsensectl [options] command [ARGS]\n");
     printf("\n");
@@ -583,12 +583,12 @@ static void print_help()
     printf("  microphone-led STATE                     Enable (on) or disable (off) microphone LED\n");
 }
 
-static void print_version()
+static void print_version(void)
 {
     printf("%s\n", DUALSENSECTL_VERSION);
 }
 
-static int list_devices()
+static int list_devices(void)
 {
     struct hid_device_info *devs = hid_enumerate(DS_VENDOR_ID, DS_PRODUCT_ID);
     if (!devs) {
