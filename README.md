@@ -48,7 +48,7 @@ Linux tool for controlling Sony PlayStation 5 DualSense controller.
 * gcc-devel | gcc-c++ | dbus-1-devel | libdbus-c++-devel | libhidapi-devel | libudev-devel
  
 ### Fedora
-* gcc | gcc-c++ | dbus-devel | hidapi-devel | systemd-devel
+* gcc | gcc-c++ | dbus-devel | hidapi-devel | systemd-devel | systemd-udev
 
 ### Mageia
 * gcc | gcc-c++ | lib64dbus-devel | lib64dbus-c++-devel | lib64hidapi-devel | lib64udev-devel
@@ -71,7 +71,7 @@ Linux tool for controlling Sony PlayStation 5 DualSense controller.
 * gcc | gcc-c++ | dbus-1 | libhidapi-hidraw0 | libhidapi-libusb0 | udev | libudev1
  
 ### Fedora
-* gcc | gcc-c++ | dbus | systemd | hidapi | systemd-devel
+* gcc | gcc-c++ | dbus | systemd | hidapi | libhid | libusb1 | systemd-udev
 
 ### Mageia
 * gcc | gcc-c++ | lib64dbus1_3 | lib64hidapi0 | lib64udev1
