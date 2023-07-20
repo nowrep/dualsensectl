@@ -313,7 +313,7 @@ static bool dualsense_bt_disconnect(struct dualsense *ds)
     DBusMessage *reply = dbus_connection_send_with_reply_and_block(conn, msg, -1, &err);
     dbus_message_unref(msg);
     if (dbus_error_is_set(&err)) {
-        fprintf(stderr, "Failed to enumerate BT devices: %s %s\n", err.name, err.message);
+        fprintf(stderr, "Failed to enumerate Bluetooth devices: %s %s\n", err.name, err.message);
         return false;
     }
     DBusMessageIter dict;
@@ -366,14 +366,14 @@ static bool dualsense_bt_disconnect(struct dualsense *ds)
     }
     dbus_message_unref(reply);
     if (!ds_path) {
-        fprintf(stderr, "Failed to find BT device\n");
+        fprintf(stderr, "Failed to find Bluetooth device\n");
         return false;
     }
     msg = dbus_message_new_method_call("org.bluez", ds_path, "org.bluez.Device1", "Disconnect");
     reply = dbus_connection_send_with_reply_and_block(conn, msg, -1, &err);
     dbus_message_unref(msg);
     if (dbus_error_is_set(&err)) {
-        fprintf(stderr, "Failed to disconnect BT device: %s %s\n", err.name, err.message);
+        fprintf(stderr, "Failed to disconnect Bluetooth device: %s %s\n", err.name, err.message);
         return false;
     }
     dbus_message_unref(reply);
@@ -384,7 +384,7 @@ static bool dualsense_bt_disconnect(struct dualsense *ds)
 static int command_power_off(struct dualsense *ds)
 {
     if (!ds->bt) {
-        fprintf(stderr, "Controller is not connected via BT\n");
+        fprintf(stderr, "Controller is not connected via Bluetooth\n");
         return 1;
     }
     if (!dualsense_bt_disconnect(ds)) {
@@ -432,25 +432,25 @@ static int command_battery(struct dualsense *ds)
          * 0 = 0-9%, 1 = 10-19%, .. and 10 = 100%
          */
         battery_capacity = min(battery_data * 10 + 5, 100);
-        battery_status = "discharging";
+        battery_status = "DISCHARGING";
         break;
     case 0x1:
         battery_capacity = min(battery_data * 10 + 5, 100);
-        battery_status = "charging";
+        battery_status = "CHARGING";
         break;
     case 0x2:
         battery_capacity = 100;
-        battery_status = "full";
+        battery_status = "FULL";
         break;
     case 0xa: /* voltage or temperature out of range */
     case 0xb: /* temperature error */
         battery_capacity = 0;
-        battery_status = "not-charging";
+        battery_status = "NOT-CHARGING";
         break;
     case 0xf: /* charging error */
     default:
         battery_capacity = 0;
-        battery_status = "unknown";
+        battery_status = "UNKNOWN";
     }
 #undef min
 
@@ -465,9 +465,9 @@ static int command_lightbar1(struct dualsense *ds, char *state)
     dualsense_init_output_report(ds, &rp, rbuf);
 
     rp.common->valid_flag2 = DS_OUTPUT_VALID_FLAG2_LIGHTBAR_SETUP_CONTROL_ENABLE;
-    if (!strcmp(state, "on")) {
+    if (!strcmp(state, "ON")) {
         rp.common->lightbar_setup = DS_OUTPUT_LIGHTBAR_SETUP_LIGHT_ON;
-    } else if (!strcmp(state, "off")) {
+    } else if (!strcmp(state, "OFF")) {
         rp.common->lightbar_setup = DS_OUTPUT_LIGHTBAR_SETUP_LIGHT_OUT;
     } else {
         fprintf(stderr, "Invalid state\n");
@@ -532,9 +532,9 @@ static int command_microphone(struct dualsense *ds, char *state)
     dualsense_init_output_report(ds, &rp, rbuf);
 
     rp.common->valid_flag1 = DS_OUTPUT_VALID_FLAG1_POWER_SAVE_CONTROL_ENABLE;
-    if (!strcmp(state, "on")) {
+    if (!strcmp(state, "ON")) {
         rp.common->power_save_control &= ~DS_OUTPUT_POWER_SAVE_CONTROL_MIC_MUTE;
-    } else if (!strcmp(state, "off")) {
+    } else if (!strcmp(state, "OFF")) {
         rp.common->power_save_control |= DS_OUTPUT_POWER_SAVE_CONTROL_MIC_MUTE;
     } else {
         fprintf(stderr, "Invalid state\n");
@@ -553,9 +553,9 @@ static int command_microphone_led(struct dualsense *ds, char *state)
     dualsense_init_output_report(ds, &rp, rbuf);
 
     rp.common->valid_flag1 = DS_OUTPUT_VALID_FLAG1_MIC_MUTE_LED_CONTROL_ENABLE;
-    if (!strcmp(state, "on")) {
+    if (!strcmp(state, "ON")) {
         rp.common->mute_button_led = 1;
-    } else if (!strcmp(state, "off")) {
+    } else if (!strcmp(state, "OFF")) {
         rp.common->mute_button_led = 0;
     } else {
         fprintf(stderr, "Invalid state\n");
@@ -721,23 +721,23 @@ static int command_monitor(void)
 
 static void print_help(void)
 {
-    printf("Usage: dualsensectl [options] command [ARGS]\n");
+    printf("Usage: dualsensectl [options] command [ARGUMENTS]\n");
     printf("\n");
     printf("Options:\n");
-    printf("  -l                                       List available devices\n");
-    printf("  -d DEVICE                                Specify which device to use\n");
-    printf("  -w                                       Wait for shell command to complete (monitor only)\n");
-    printf("  -h --help                                Show this help message\n");
-    printf("  -v --version                             Show version\n");
+    printf("  -l                                          List available devices [xx:xx:xx:xx:xx:xx] (USB/Bluetooth)\n");
+    printf("  -d [DEVICE]                                 Specify which device to use [xx:xx:xx:xx:xx:xx] (USB/Bluetooth)\n");
+    printf("  -w                                          Wait for shell command to complete (Monitor only)\n");
+    printf("  -h --help                                   Shows this help message\n");
+    printf("  -v --version                                Shows version\n");
     printf("Commands:\n");
-    printf("  power-off                                Turn off the controller (BT only)\n");
-    printf("  battery                                  Get the controller battery level\n");
-    printf("  lightbar STATE                           Enable (on) or disable (off) lightbar\n");
-    printf("  lightbar RED GREEN BLUE [BRIGHTNESS]     Set lightbar color and brightness (0-255)\n");
-    printf("  player-leds NUMBER                       Set player LEDs (1-5) or disabled (0)\n");
-    printf("  microphone STATE                         Enable (on) or disable (off) microphone\n");
-    printf("  microphone-led STATE                     Enable (on) or disable (off) microphone LED\n");
-    printf("  monitor [add COMMAND] [remove COMMAND]   Run shell command COMMAND on add/remove events\n");
+    printf("  power-off                                   Turn off the controller (Bluetooth only)\n");
+    printf("  battery                                     Get the controller battery level and charging/discharging information\n");
+    printf("  lightbar [STATE]                            Enable [ON] or disable [OFF] lightbar\n");
+    printf("  lightbar [RED] [GREEN] [BLUE] [BRIGHTNESS]  Set lightbar color and brightness [0-255] [0-255] [0-255] [0-255]\n");
+    printf("  player-leds [NUMBER]                        Set player LEDs [1-5] or disabled [0]\n");
+    printf("  microphone [STATE]                          Enable [ON] or disable [OFF] microphone\n");
+    printf("  microphone-led [STATE]                      Enable [ON] or disable [OFF] microphone orange LED\n");
+    printf("  monitor [add COMMAND] / [remove COMMAND]    Run shell command [COMMAND] on add/remove events\n");
 }
 
 static void print_version(void)
