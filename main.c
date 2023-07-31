@@ -194,6 +194,36 @@ struct dualsense_output_report {
     struct dualsense_output_report_common *common;
 };
 
+struct dualsense_feature_report_firmware {
+    uint8_t report_id; // 0x20
+    char build_date[11]; // string
+    char build_time[8]; // string
+    uint16_t fw_type;
+    uint16_t sw_series;
+    uint32_t hardware_info; // 0x00FF0000 - Variation
+                            // 0x0000FF00 - Generation
+                            // 0x0000003F - Trial?
+                            // ^ Values tied to enumerations
+    uint32_t firmware_version; // 0xAABBCCCC AA.BB.CCCC
+    char device_info[12];
+    ////
+    uint16_t update_version;
+    char update_image_info;
+    char update_unk;
+    ////
+    uint32_t fw_version_1; // AKA SblFwVersion
+                           // 0xAABBCCCC AA.BB.CCCC
+                           // Ignored for fw_type 0
+                           // HardwareVersion used for fw_type 1
+                           // Unknown behavior if HardwareVersion < 0.1.38 for fw_type 2 & 3
+                           // If HardwareVersion >= 0.1.38 for fw_type 2 & 3
+    uint32_t fw_version_2; // AKA VenomFwVersion
+    uint32_t fw_version_3; // AKA SpiderDspFwVersion AKA BettyFwVer
+                           // May be Memory Control Unit for Non Volatile Storage
+    uint32_t crc32;
+};
+_Static_assert(sizeof(struct dualsense_feature_report_firmware) == DS_FEATURE_REPORT_FIRMWARE_INFO_SIZE, "Bad feature report firmware structure size");
+
 struct dualsense {
     bool bt;
     hid_device *dev;
@@ -494,6 +524,31 @@ static int command_battery(struct dualsense *ds)
 #undef min
 
     printf("%d %s\n", (int)battery_capacity, battery_status);
+    return 0;
+}
+
+static int command_info(struct dualsense *ds)
+{
+    uint8_t buf[DS_FEATURE_REPORT_FIRMWARE_INFO_SIZE];
+    memset(buf, 0, sizeof(buf));
+    buf[0] = DS_FEATURE_REPORT_FIRMWARE_INFO;
+    int res = hid_get_feature_report(ds->dev, buf, sizeof(buf));
+    if (res != sizeof(buf)) {
+        fprintf(stderr, "Invalid feature report\n");
+        return false;
+    }
+
+    struct dualsense_feature_report_firmware *ds_report;
+    ds_report = (struct dualsense_feature_report_firmware *)&buf;
+
+    printf("hardware: %x,\tfirmware: %x\n", ds_report->hardware_info, ds_report->firmware_version);
+    printf("build_date: %.11s,\tbuild_time: %.8s\n", ds_report->build_date, ds_report->build_time);
+    printf("fw_type: %i,\tsw_series %i\n", ds_report->fw_type, ds_report->sw_series);
+    /*printf("device_info: %.12s,\tupdate_version: %i\n", ds_report->device_info, ds_report->update_version);
+    printf("update_image_info: %c,\tupdate_unk: %c\n", ds_report->update_image_info, ds_report->update_unk);
+    printf("fw_version_1: %i,\tfw_version_2: %i,\tfw_version_3: %i\n", ds_report->fw_version_1, ds_report->fw_version_2, ds_report->fw_version_3);
+    */
+
     return 0;
 }
 
@@ -961,6 +1016,7 @@ static void print_help(void)
     printf("Commands:\n");
     printf("  power-off                                Turn off the controller (BT only)\n");
     printf("  battery                                  Get the controller battery level\n");
+    printf("  info                                     Get the controller firmware info\n");
     printf("  lightbar STATE                           Enable (on) or disable (off) lightbar\n");
     printf("  lightbar RED GREEN BLUE [BRIGHTNESS]     Set lightbar color and brightness (0-255)\n");
     printf("  player-leds NUMBER                       Set player LEDs (1-5) or disabled (0)\n");
@@ -1060,6 +1116,8 @@ int main(int argc, char *argv[])
         return command_power_off(&ds);
     } else if (!strcmp(argv[1], "battery")) {
         return command_battery(&ds);
+    } else if (!strcmp(argv[1], "info")) {
+        return command_info(&ds);
     } else if (!strcmp(argv[1], "lightbar")) {
         if (argc == 3) {
             return command_lightbar1(&ds, argv[2]);
