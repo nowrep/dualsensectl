@@ -726,7 +726,6 @@ static int command_trigger(struct dualsense *ds, char *trigger, uint8_t mode, ui
     uint8_t rbuf[DS_OUTPUT_REPORT_BT_SIZE];
     dualsense_init_output_report(ds, &rp, rbuf);
 
-    /* TODO add left/right trigger selection */
     if (!strcmp(trigger, "right") || !strcmp(trigger, "both")) {
         rp.common->valid_flag0 = DS_OUTPUT_VALID_FLAG0_RIGHT_TRIGGER_MOTOR_ENABLE;
     }
@@ -766,6 +765,32 @@ static int command_trigger_off(struct dualsense *ds, char *trigger)
     return command_trigger(ds, trigger, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
+static int trigger_bitpacking_array(struct dualsense *ds, char *trigger, uint8_t mode, uint8_t strength[10], uint8_t frequency)
+{
+    uint32_t strength_zones = 0;
+    uint16_t active_zones = 0;
+    for (int i = 0; i < 10; i++) {
+        if (strength[i] > 8) {
+            fprintf(stderr, "strengths must be between 0 and 8\n");
+            return 1;
+        }
+        if (strength[i] > 0) {
+            uint8_t strength_value = (uint8_t)((strength[i] -1) & 0x07);
+            strength_zones |= (uint32_t)(strength_value << (3 * i));
+            active_zones |= (uint16_t)(1 << i);
+        }
+    }
+
+    return command_trigger(ds, trigger, mode,
+                           (uint8_t)((active_zones >> 0) & 0xff),
+                           (uint8_t)((active_zones >> 8) & 0xff),
+                           (uint8_t)((strength_zones >> 0) & 0xff),
+                           (uint8_t)((strength_zones >> 8) & 0xff),
+                           (uint8_t)((strength_zones >> 16) & 0xff),
+                           (uint8_t)((strength_zones >> 24) & 0xff),
+                           0, 0,
+                           frequency);
+}
 
 static int command_trigger_feedback(struct dualsense *ds, char *trigger, uint8_t position, uint8_t strength)
 {
@@ -777,22 +802,12 @@ static int command_trigger_feedback(struct dualsense *ds, char *trigger, uint8_t
         fprintf(stderr, "strength must be between 0 and 8\n");
         return 1;
     }
-    uint8_t strength_value = (uint8_t)((strength - 1) & 0x07);
-    uint32_t strength_zones = 0;
-    uint16_t active_zones = 0;
+    uint8_t strength_array[10] = {0};
     for (int i = position; i < 10; i++) {
-        strength_zones |= (uint32_t)(strength_value << (3 * i));
-        active_zones |= (uint16_t)(1 << i);
+        strength_array[i] = strength;
     }
 
-    return command_trigger(ds, trigger, 0x21,
-                           (uint8_t)((active_zones >> 0) & 0xff),
-                           (uint8_t)((active_zones >> 8) & 0xff),
-                           (uint8_t)((strength_zones >> 0) & 0xff),
-                           (uint8_t)((strength_zones >> 8) & 0xff),
-                           (uint8_t)((strength_zones >> 16) & 0xff),
-                           (uint8_t)((strength_zones >> 24) & 0xff),
-                           0, 0, 0);
+    return trigger_bitpacking_array(ds, trigger, 0x21, strength_array, 0);
 }
 
 static int command_trigger_weapon(struct dualsense *ds, char *trigger, uint8_t start_position, uint8_t end_position, uint8_t strength)
@@ -832,23 +847,23 @@ static int command_trigger_vibration(struct dualsense *ds, char *trigger, uint8_
         fprintf(stderr, "frequency must be greater than 0\n");
         return 1;
     }
-    uint8_t amplitude_value = (uint8_t)((amplitude - 1) & 0x07);
-    uint32_t amplitude_zones = 0;
-    uint16_t active_zones = 0;
 
+    uint8_t strength_array[10] = {0};
     for (int i = position; i < 10; i++) {
-        amplitude_zones |= (uint32_t)(amplitude_value << (3 * i));
-        active_zones |= (uint16_t)(1 << i);
+        strength_array[i] = amplitude;
     }
-    return command_trigger(ds, trigger, 0x26,
-                           (uint8_t)((active_zones >> 0) & 0xff),
-                           (uint8_t)((active_zones >> 8) & 0xff),
-                           (uint8_t)((amplitude_zones >> 0) & 0xff),
-                           (uint8_t)((amplitude_zones >> 8) & 0xff),
-                           (uint8_t)((amplitude_zones >> 16) & 0xff),
-                           (uint8_t)((amplitude_zones >> 24) & 0xff),
-                           0, 0,
-                           frequency);
+    return trigger_bitpacking_array(ds, trigger, 0x26, strength_array, frequency);
+
+}
+
+static int command_trigger_feedback_raw(struct dualsense *ds, char *trigger, uint8_t strength[10] )
+{
+    return trigger_bitpacking_array(ds, trigger, 0x21, strength, 0);
+}
+
+static int command_trigger_vibration_raw(struct dualsense *ds, char *trigger, uint8_t strength[10], uint8_t frequency)
+{
+    return trigger_bitpacking_array(ds, trigger, 0x26, strength, frequency);
 }
 
 static bool sh_command_wait = false;
@@ -1028,6 +1043,8 @@ static void print_help(void)
     printf("  trigger TRIGGER feedback POSITION STRENGTH  set a resistance starting at position with a defined strength\n");
     printf("  trigger TRIGGER weapon START STOP STRENGTH  Emulate weapon like gun trigger\n");
     printf("  trigger TRIGGER vibration POSITION AMPLITUDE FREQUENCY  Vibrates motor arm around specified position\n");
+    printf("  trigger TRIGGER feedback-raw STRENGTH[10]  set a resistance starting using array of strength\n");
+    printf("  trigger TRIGGER vibration-raw AMPLITUDE[10] FREQUENCY  Vibrates motor arm at position and strength specified by an array of amplitude\n");
     printf("  trigger TRIGGER MODE [PARAMS]            set the trigger (left, right or both) mode with parameters (up to 9)\n");
     printf("  monitor [add COMMAND] [remove COMMAND]   Run shell command COMMAND on add/remove events\n");
 }
@@ -1163,7 +1180,7 @@ int main(int argc, char *argv[])
         }
         return command_volume(&ds, atoi(argv[2]));
     } else if (!strcmp(argv[1], "trigger")) {
-        if ((argc < 4) || (argc > 13) ) {
+        if (argc < 4) {
             fprintf(stderr, "Invalid arguments\n");
             return 2;
         }
@@ -1187,8 +1204,23 @@ int main(int argc, char *argv[])
                 return 2;
             }
             return command_trigger_vibration(&ds, argv[2], atoi(argv[4]), atoi(argv[5]), atoi(argv[6]));
+        } else if (!strcmp(argv[3], "feedback-raw")) {
+            if (argc < 14) {
+                fprintf(stderr, "feedback-raw mode need ten parameters\n");
+                return 2;
+            }
+            uint8_t strengths[10] = { atoi(argv[4]), atoi(argv[5]), atoi(argv[6]), atoi(argv[7]), atoi(argv[8]), atoi(argv[9]), atoi(argv[10]), atoi(argv[11]), atoi(argv[12]), atoi(argv[13]) };
+            return command_trigger_feedback_raw(&ds, argv[2], strengths);
+        } else if (!strcmp(argv[3], "vibration-raw")) {
+            if (argc < 15) {
+                fprintf(stderr, "vibration-raw mode need eleven parameters\n");
+                return 2;
+            }
+            uint8_t strengths[10] = { atoi(argv[4]), atoi(argv[5]), atoi(argv[6]), atoi(argv[7]), atoi(argv[8]), atoi(argv[9]), atoi(argv[10]), atoi(argv[11]), atoi(argv[12]), atoi(argv[13]) };
+            return command_trigger_vibration_raw(&ds, argv[2], strengths, atoi(argv[14]));
         }
 
+        /* mostly to test raw parameters without any kind of bitpacking or range check */
         uint8_t param1 = argc > 4 ? atoi(argv[4]) : 0;
         uint8_t param2 = argc > 5 ? atoi(argv[5]) : 0;
         uint8_t param3 = argc > 6 ? atoi(argv[6]) : 0;

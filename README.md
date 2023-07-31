@@ -25,6 +25,8 @@ Linux tool for controlling Sony PlayStation 5 DualSense controller.
       trigger TRIGGER feedback POSITION STRENGTH  set a resistance starting at position with a defined strength
       trigger TRIGGER weapon START STOP STRENGTH  Emulate weapon like gun trigger
       trigger TRIGGER vibration POSITION AMPLITUDE FREQUENCY  Vibrates motor arm around specified position
+      trigger TRIGGER feedback-raw STRENGTH[10]  set a resistance starting using array of strength
+      trigger TRIGGER vibration-raw AMPLITUDE[10] FREQUENCY  Vibrates motor arm at position and strength specified by an array of amplitude
       trigger TRIGGER MODE [PARAMS]            set the trigger (left, right or both) mode with parameters (up to 9)
       monitor [add COMMAND] [remove COMMAND]   Run shell command COMMAND on add/remove events
 
