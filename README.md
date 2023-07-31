@@ -20,6 +20,11 @@ Linux tool for controlling Sony PlayStation 5 DualSense controller.
       microphone-led STATE                     Enable (on) or disable (off) microphone LED
       speaker STATE                            Toggle to 'internal' speaker, 'headphone' or both
       volume VOLUME                            Set audio volume (0-255) of internal speaker and headphone
+      trigger TRIGGER off                      remove all effects
+      trigger TRIGGER feedback POSITION STRENGTH  set a resistance starting at position with a defined strength
+      trigger TRIGGER weapon START STOP STRENGTH  Emulate weapon like gun trigger
+      trigger TRIGGER vibration POSITION AMPLITUDE FREQUENCY  Vibrates motor arm around specified position
+      trigger TRIGGER MODE [PARAMS]            set the trigger (left, right or both) mode with parameters (up to 9)
       monitor [add COMMAND] [remove COMMAND]   Run shell command COMMAND on add/remove events
 
 

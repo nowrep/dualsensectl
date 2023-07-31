@@ -136,8 +136,18 @@ struct dualsense_output_report_common {
     uint8_t mute_button_led;
 
     uint8_t power_save_control;
-    uint8_t reserved2[27];
 
+    /* right trigger motor */
+    uint8_t right_trigger_motor_mode;
+    uint8_t right_trigger_param[10];
+
+    /* right trigger motor */
+    uint8_t left_trigger_motor_mode;
+    uint8_t left_trigger_param[10];
+
+    uint8_t reserved2[4];
+
+    uint8_t reduce_motor_power;
     uint8_t audio_flags2; /* 3 first bits: speaker pre-gain */
 
     /* LEDs and lightbar */
@@ -150,6 +160,7 @@ struct dualsense_output_report_common {
     uint8_t lightbar_green;
     uint8_t lightbar_blue;
 } __attribute__((packed));
+_Static_assert(sizeof(struct dualsense_output_report_common) == 47, "Bad output report structure size");
 
 struct dualsense_output_report_bt {
     uint8_t report_id; /* 0x31 */
@@ -654,6 +665,137 @@ static int command_volume(struct dualsense *ds, uint8_t volume)
     return 0;
 }
 
+static int command_trigger(struct dualsense *ds, char *trigger, uint8_t mode, uint8_t param1, uint8_t param2, uint8_t param3, uint8_t param4, uint8_t param5, uint8_t param6, uint8_t param7, uint8_t param8, uint8_t param9 )
+{
+    struct dualsense_output_report rp;
+    uint8_t rbuf[DS_OUTPUT_REPORT_BT_SIZE];
+    dualsense_init_output_report(ds, &rp, rbuf);
+
+    /* TODO add left/right trigger selection */
+    if (!strcmp(trigger, "right") || !strcmp(trigger, "both")) {
+        rp.common->valid_flag0 = DS_OUTPUT_VALID_FLAG0_RIGHT_TRIGGER_MOTOR_ENABLE;
+    }
+    if (!strcmp(trigger, "left") || !strcmp(trigger, "both")) {
+        rp.common->valid_flag0 |= DS_OUTPUT_VALID_FLAG0_LEFT_TRIGGER_MOTOR_ENABLE;
+    }
+
+    rp.common->right_trigger_motor_mode = mode;
+    rp.common->right_trigger_param[0] = param1;
+    rp.common->right_trigger_param[1] = param2;
+    rp.common->right_trigger_param[2] = param3;
+    rp.common->right_trigger_param[3] = param4;
+    rp.common->right_trigger_param[4] = param5;
+    rp.common->right_trigger_param[5] = param6;
+    rp.common->right_trigger_param[6] = param7;
+    rp.common->right_trigger_param[7] = param8;
+    rp.common->right_trigger_param[8] = param9;
+
+    rp.common->left_trigger_motor_mode = mode;
+    rp.common->left_trigger_param[0] = param1;
+    rp.common->left_trigger_param[1] = param2;
+    rp.common->left_trigger_param[2] = param3;
+    rp.common->left_trigger_param[3] = param4;
+    rp.common->left_trigger_param[4] = param5;
+    rp.common->left_trigger_param[5] = param6;
+    rp.common->left_trigger_param[6] = param7;
+    rp.common->left_trigger_param[7] = param8;
+    rp.common->left_trigger_param[8] = param9;
+
+    dualsense_send_output_report(ds, &rp);
+
+    return 0;
+}
+
+static int command_trigger_off(struct dualsense *ds, char *trigger)
+{
+    return command_trigger(ds, trigger, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+}
+
+
+static int command_trigger_feedback(struct dualsense *ds, char *trigger, uint8_t position, uint8_t strength)
+{
+    if (position > 9 || !(position > 0)) {
+        fprintf(stderr, "position must be between 0 and 9\n");
+        return 1;
+    }
+    if (strength > 8 || !(strength > 0)) {
+        fprintf(stderr, "strength must be between 0 and 8\n");
+        return 1;
+    }
+    uint8_t strength_value = (uint8_t)((strength - 1) & 0x07);
+    uint32_t strength_zones = 0;
+    uint16_t active_zones = 0;
+    for (int i = position; i < 10; i++) {
+        strength_zones |= (uint32_t)(strength_value << (3 * i));
+        active_zones |= (uint16_t)(1 << i);
+    }
+
+    return command_trigger(ds, trigger, 0x21,
+                           (uint8_t)((active_zones >> 0) & 0xff),
+                           (uint8_t)((active_zones >> 8) & 0xff),
+                           (uint8_t)((strength_zones >> 0) & 0xff),
+                           (uint8_t)((strength_zones >> 8) & 0xff),
+                           (uint8_t)((strength_zones >> 16) & 0xff),
+                           (uint8_t)((strength_zones >> 24) & 0xff),
+                           0, 0, 0);
+}
+
+static int command_trigger_weapon(struct dualsense *ds, char *trigger, uint8_t start_position, uint8_t end_position, uint8_t strength)
+{
+    if (start_position > 7 || start_position < 2) {
+        fprintf(stderr, "start position must be between 2 and 7\n");
+        return 1;
+    }
+    if (end_position > 8 || end_position < start_position+1) {
+        fprintf(stderr, "end position must be between start position+1 and 8\n");
+        return 1;
+    }
+    if (strength > 8 || !(strength > 0)) {
+        fprintf(stderr, "strength must be between 1 and 8\n");
+        return 1;
+    }
+
+    uint16_t start_stop_zones = (uint16_t)((1 << start_position) | (1 << end_position));
+    return command_trigger(ds, trigger, 0x25,
+                           (uint8_t)((start_stop_zones >> 0) & 0xff),
+                           (uint8_t)((start_stop_zones >> 8) & 0xff),
+                           strength-1,
+                           0, 0, 0, 0, 0, 0);
+}
+
+static int command_trigger_vibration(struct dualsense *ds, char *trigger, uint8_t position, uint8_t amplitude, uint8_t frequency)
+{
+    if (position > 9 || !(position > 0)) {
+        fprintf(stderr, "position must be between 0 and 9\n");
+        return 1;
+    }
+    if (amplitude > 8 || !(amplitude > 0)) {
+        fprintf(stderr, "amplitude must be between 1 and 8\n");
+        return 1;
+    }
+    if (!(frequency > 0)) {
+        fprintf(stderr, "frequency must be greater than 0\n");
+        return 1;
+    }
+    uint8_t amplitude_value = (uint8_t)((amplitude - 1) & 0x07);
+    uint32_t amplitude_zones = 0;
+    uint16_t active_zones = 0;
+
+    for (int i = position; i < 10; i++) {
+        amplitude_zones |= (uint32_t)(amplitude_value << (3 * i));
+        active_zones |= (uint16_t)(1 << i);
+    }
+    return command_trigger(ds, trigger, 0x26,
+                           (uint8_t)((active_zones >> 0) & 0xff),
+                           (uint8_t)((active_zones >> 8) & 0xff),
+                           (uint8_t)((amplitude_zones >> 0) & 0xff),
+                           (uint8_t)((amplitude_zones >> 8) & 0xff),
+                           (uint8_t)((amplitude_zones >> 16) & 0xff),
+                           (uint8_t)((amplitude_zones >> 24) & 0xff),
+                           0, 0,
+                           frequency);
+}
+
 static bool sh_command_wait = false;
 static const char *sh_command_add = NULL;
 static const char *sh_command_remove = NULL;
@@ -826,6 +968,11 @@ static void print_help(void)
     printf("  microphone-led STATE                     Enable (on) or disable (off) microphone LED\n");
     printf("  speaker STATE                            Toggle to 'internal' speaker, 'headphone' or both\n");
     printf("  volume VOLUME                            Set audio volume (0-255) of internal speaker and headphone\n");
+    printf("  trigger TRIGGER off                      remove all effects\n");
+    printf("  trigger TRIGGER feedback POSITION STRENGTH  set a resistance starting at position with a defined strength\n");
+    printf("  trigger TRIGGER weapon START STOP STRENGTH  Emulate weapon like gun trigger\n");
+    printf("  trigger TRIGGER vibration POSITION AMPLITUDE FREQUENCY  Vibrates motor arm around specified position\n");
+    printf("  trigger TRIGGER MODE [PARAMS]            set the trigger (left, right or both) mode with parameters (up to 9)\n");
     printf("  monitor [add COMMAND] [remove COMMAND]   Run shell command COMMAND on add/remove events\n");
 }
 
@@ -957,6 +1104,44 @@ int main(int argc, char *argv[])
             return 1;
         }
         return command_volume(&ds, atoi(argv[2]));
+    } else if (!strcmp(argv[1], "trigger")) {
+        if ((argc < 4) || (argc > 13) ) {
+            fprintf(stderr, "Invalid arguments\n");
+            return 2;
+        }
+        if (!strcmp(argv[3], "off")) {
+            return command_trigger_off(&ds, argv[2]);
+        } else if (!strcmp(argv[3], "feedback")) {
+            if (argc < 6) {
+                fprintf(stderr, "feedback mode need two parameters\n");
+                return 2;
+            }
+            return command_trigger_feedback(&ds, argv[2], atoi(argv[4]), atoi(argv[5]));
+        } else if (!strcmp(argv[3], "weapon")) {
+            if (argc < 7) {
+                fprintf(stderr, "weapons mode need three parameters\n");
+                return 2;
+            }
+            return command_trigger_weapon(&ds, argv[2], atoi(argv[4]), atoi(argv[5]), atoi(argv[6]));
+        } else if (!strcmp(argv[3], "vibration")) {
+            if (argc < 7) {
+                fprintf(stderr, "vibration mode need three parameters\n");
+                return 2;
+            }
+            return command_trigger_vibration(&ds, argv[2], atoi(argv[4]), atoi(argv[5]), atoi(argv[6]));
+        }
+
+        uint8_t param1 = argc > 4 ? atoi(argv[4]) : 0;
+        uint8_t param2 = argc > 5 ? atoi(argv[5]) : 0;
+        uint8_t param3 = argc > 6 ? atoi(argv[6]) : 0;
+        uint8_t param4 = argc > 7 ? atoi(argv[7]) : 0;
+        uint8_t param5 = argc > 8 ? atoi(argv[8]) : 0;
+        uint8_t param6 = argc > 9 ? atoi(argv[9]) : 0;
+        uint8_t param7 = argc > 10 ? atoi(argv[10]) : 0;
+        uint8_t param8 = argc > 11 ? atoi(argv[11]) : 0;
+        uint8_t param9 = argc > 12 ? atoi(argv[12]) : 0;
+
+        return command_trigger(&ds, argv[2], atoi(argv[3]), param1, param2, param3, param4, param5, param6, param7, param8, param9);
     } else {
         fprintf(stderr, "Invalid command\n");
         return 2;

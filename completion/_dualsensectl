@@ -13,6 +13,7 @@ _dualsensectl_commands(){
         'microphone-led:control the microphone LED'
         'speaker:control the sound output'
         'volume:control the volume'
+        'trigger:control trigger force feedback'
         )
 
     if ((CURRENT == 1)); then
