@@ -18,6 +18,8 @@ Linux tool for controlling Sony PlayStation 5 DualSense controller.
       player-leds NUMBER                       Set player LEDs (1-5) or disabled (0)
       microphone STATE                         Enable (on) or disable (off) microphone
       microphone-led STATE                     Enable (on) or disable (off) microphone LED
+      speaker STATE                            Toggle to 'internal' speaker, 'headphone' or both
+      volume VOLUME                            Set audio volume (0-255) of internal speaker and headphone
       monitor [add COMMAND] [remove COMMAND]   Run shell command COMMAND on add/remove events
 
 
@@ -42,3 +44,9 @@ Also installed by Steam, so you may already have it configured. If not, create `
 
     # PS5 DualSense controller over bluetooth hidraw
     KERNEL=="hidraw*", KERNELS=="*054C:0CE6*", MODE="0660", TAG+="uaccess"
+
+### Credit
+
+the following docs:
+ - https://controllers.fandom.com/wiki/Sony_DualSense/Data_Structures
+ - https://gist.github.com/Nielk1/6d54cc2c00d2201ccb8c2720ad7538db

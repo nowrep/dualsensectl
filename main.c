@@ -51,15 +51,38 @@
 #define BIT(n) (1 << n)
 #define DS_OUTPUT_VALID_FLAG0_COMPATIBLE_VIBRATION BIT(0)
 #define DS_OUTPUT_VALID_FLAG0_HAPTICS_SELECT BIT(1)
+#define DS_OUTPUT_VALID_FLAG0_RIGHT_TRIGGER_MOTOR_ENABLE BIT(2)
+#define DS_OUTPUT_VALID_FLAG0_LEFT_TRIGGER_MOTOR_ENABLE BIT(3)
+#define DS_OUTPUT_VALID_FLAG0_HEADPHONE_VOLUME_ENABLE BIT(4)
+#define DS_OUTPUT_VALID_FLAG0_SPEAKER_VOLUME_ENABLE BIT(5)
+#define DS_OUTPUT_VALID_FLAG0_MICROPHONE_VOLUME_ENABLE BIT(6)
+#define DS_OUTPUT_VALID_FLAG0_AUDIO_CONTROL_ENABLE BIT(7)
+
 #define DS_OUTPUT_VALID_FLAG1_MIC_MUTE_LED_CONTROL_ENABLE BIT(0)
 #define DS_OUTPUT_VALID_FLAG1_POWER_SAVE_CONTROL_ENABLE BIT(1)
 #define DS_OUTPUT_VALID_FLAG1_LIGHTBAR_CONTROL_ENABLE BIT(2)
 #define DS_OUTPUT_VALID_FLAG1_RELEASE_LEDS BIT(3)
 #define DS_OUTPUT_VALID_FLAG1_PLAYER_INDICATOR_CONTROL_ENABLE BIT(4)
+#define DS_OUTPUT_VALID_FLAG1_HAPTIC_VOLUME_ENABLE BIT(6)
+#define DS_OUTPUT_VALID_FLAG1_AUDIO_CONTROL2_ENABLE BIT(7)
+
 #define DS_OUTPUT_VALID_FLAG2_LIGHTBAR_SETUP_CONTROL_ENABLE BIT(1)
 #define DS_OUTPUT_POWER_SAVE_CONTROL_MIC_MUTE BIT(4)
+#define DS_OUTPUT_POWER_SAVE_CONTROL_AUDIO_MUTE BIT(5)
 #define DS_OUTPUT_LIGHTBAR_SETUP_LIGHT_ON BIT(0)
 #define DS_OUTPUT_LIGHTBAR_SETUP_LIGHT_OUT BIT(1)
+
+/* audio control flags */
+#define DS_OUTPUT_AUDIO_FLAG_FORCE_INTERNAL_MIC BIT(0)
+#define DS_OUTPUT_AUDIO_FLAG_FORCE_HEADSET_MIC BIT(1)
+#define DS_OUTPUT_AUDIO_FLAG_ECHO_CANCEL BIT(2)
+#define DS_OUTPUT_AUDIO_FLAG_NOISE_CANCEL BIT(3)
+#define DS_OUTPUT_AUDIO_OUTPUT_PATH_SHIFT 4
+#define DS_OUTPUT_AUDIO_FLAG_DISABLE_HEADPHONE BIT(4)
+#define DS_OUTPUT_AUDIO_FLAG_ENABLE_INTERNAL_SPEAKER BIT(5)
+
+/* audio control2 flags */
+#define DS_OUTPUT_AUDIO2_FLAG_BEAM_FORMING BIT(4)
 
 /* Status field of DualSense input report. */
 #define DS_STATUS_BATTERY_CAPACITY 0xF
@@ -106,11 +129,16 @@ struct dualsense_output_report_common {
     uint8_t motor_left;
 
     /* Audio controls */
-    uint8_t reserved[4];
+    uint8_t headphone_audio_volume; /* 0-0x7f */
+    uint8_t speaker_audio_volume;   /* 0-255 */
+    uint8_t internal_microphone_volume; /* 0-0x40 */
+    uint8_t audio_flags;
     uint8_t mute_button_led;
 
     uint8_t power_save_control;
-    uint8_t reserved2[28];
+    uint8_t reserved2[27];
+
+    uint8_t audio_flags2; /* 3 first bits: speaker pre-gain */
 
     /* LEDs and lightbar */
     uint8_t valid_flag2;
@@ -567,6 +595,65 @@ static int command_microphone_led(struct dualsense *ds, char *state)
     return 0;
 }
 
+static int command_speaker(struct dualsense *ds, char *state)
+{
+    struct dualsense_output_report rp;
+    uint8_t rbuf[DS_OUTPUT_REPORT_BT_SIZE];
+    dualsense_init_output_report(ds, &rp, rbuf);
+
+    rp.common->valid_flag0 = DS_OUTPUT_VALID_FLAG0_AUDIO_CONTROL_ENABLE;
+    /* value
+     * | /left headphone
+     * | | / right headphone
+     * | | | / internal speaker
+     * 0 L_R_X
+     * 1 L_L_X
+     * 2 L_L_R
+     * 3 X_X_R
+     */
+    if (!strcmp(state, "internal")) { /* right channel to speaker */
+        rp.common->audio_flags = 3 << DS_OUTPUT_AUDIO_OUTPUT_PATH_SHIFT;
+    } else if (!strcmp(state, "headphone")) { /* stereo channel to headphone */
+        rp.common->audio_flags = 0;
+    } else if (!strcmp(state, "monoheadphone")) { /* left channel to headphone */
+        rp.common->audio_flags = 1 << DS_OUTPUT_AUDIO_OUTPUT_PATH_SHIFT;
+    } else if (!strcmp(state, "both")) { /* left channel to headphone, right channel to speaker */
+        rp.common->audio_flags = 2 << DS_OUTPUT_AUDIO_OUTPUT_PATH_SHIFT;
+    } else {
+        fprintf(stderr, "Invalid state\n");
+        return 1;
+    }
+
+    dualsense_send_output_report(ds, &rp);
+
+    return 0;
+}
+
+static int command_volume(struct dualsense *ds, uint8_t volume)
+{
+    struct dualsense_output_report rp;
+    uint8_t rbuf[DS_OUTPUT_REPORT_BT_SIZE];
+    dualsense_init_output_report(ds, &rp, rbuf);
+
+    uint8_t max_volume = 255;
+
+    /* TODO see if we can get old values of volumes to be able to set values independently */
+    rp.common->valid_flag0 = DS_OUTPUT_VALID_FLAG0_HEADPHONE_VOLUME_ENABLE;
+    rp.common->headphone_audio_volume = volume * 0x7f / max_volume;
+
+    rp.common->valid_flag0 |= DS_OUTPUT_VALID_FLAG0_SPEAKER_VOLUME_ENABLE;
+    /* the PS5 use 0x3d-0x64 trying over 0x64 doesnt change but below 0x3d can still lower the volume */
+    rp.common->speaker_audio_volume = volume * 0x64 / max_volume;
+
+    /* if we want to set speaker pre gain */
+    //rp.common->valid_flag1 = DS_OUTPUT_VALID_FLAG1_AUDIO_CONTROL2_ENABLE;
+    //rp.common->audio_flags2 = 4;
+
+    dualsense_send_output_report(ds, &rp);
+
+    return 0;
+}
+
 static bool sh_command_wait = false;
 static const char *sh_command_add = NULL;
 static const char *sh_command_remove = NULL;
@@ -737,6 +824,8 @@ static void print_help(void)
     printf("  player-leds NUMBER                       Set player LEDs (1-5) or disabled (0)\n");
     printf("  microphone STATE                         Enable (on) or disable (off) microphone\n");
     printf("  microphone-led STATE                     Enable (on) or disable (off) microphone LED\n");
+    printf("  speaker STATE                            Toggle to 'internal' speaker, 'headphone' or both\n");
+    printf("  volume VOLUME                            Set audio volume (0-255) of internal speaker and headphone\n");
     printf("  monitor [add COMMAND] [remove COMMAND]   Run shell command COMMAND on add/remove events\n");
 }
 
@@ -852,6 +941,22 @@ int main(int argc, char *argv[])
             return 2;
         }
         return command_microphone_led(&ds, argv[2]);
+    } else if (!strcmp(argv[1], "speaker")) {
+        if (argc != 3) {
+            fprintf(stderr, "Invalid arguments\n");
+            return 2;
+        }
+        return command_speaker(&ds, argv[2]);
+    } else if (!strcmp(argv[1], "volume")) {
+        if (argc != 3) {
+            fprintf(stderr, "Invalid arguments\n");
+            return 2;
+        }
+        if (atoi(argv[2]) > 255) {
+            fprintf(stderr, "Invalid volume\n");
+            return 1;
+        }
+        return command_volume(&ds, atoi(argv[2]));
     } else {
         fprintf(stderr, "Invalid command\n");
         return 2;
