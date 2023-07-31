@@ -11,6 +11,8 @@ _dualsensectl_commands(){
         'player-leds:control the player LEDs'
         'microphone:enable or disable microphone'
         'microphone-led:control the microphone LED'
+        'speaker:control the sound output'
+        'volume:control the volume'
         )
 
     if ((CURRENT == 1)); then
