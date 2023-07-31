@@ -63,7 +63,7 @@
 #define DS_OUTPUT_VALID_FLAG1_LIGHTBAR_CONTROL_ENABLE BIT(2)
 #define DS_OUTPUT_VALID_FLAG1_RELEASE_LEDS BIT(3)
 #define DS_OUTPUT_VALID_FLAG1_PLAYER_INDICATOR_CONTROL_ENABLE BIT(4)
-#define DS_OUTPUT_VALID_FLAG1_HAPTIC_VOLUME_ENABLE BIT(6)
+#define DS_OUTPUT_VALID_FLAG1_VIBRATION_ATTENUATION_ENABLE BIT(6)
 #define DS_OUTPUT_VALID_FLAG1_AUDIO_CONTROL2_ENABLE BIT(7)
 
 #define DS_OUTPUT_VALID_FLAG2_LIGHTBAR_SETUP_CONTROL_ENABLE BIT(1)
@@ -728,6 +728,21 @@ static int command_volume(struct dualsense *ds, uint8_t volume)
     return 0;
 }
 
+static int command_vibration_attenuation(struct dualsense *ds, uint8_t rumble_attenuation, uint8_t trigger_attenuation)
+{
+    struct dualsense_output_report rp;
+    uint8_t rbuf[DS_OUTPUT_REPORT_BT_SIZE];
+    dualsense_init_output_report(ds, &rp, rbuf);
+
+    /* need to store or get current values if we want to change motor/haptic and trigger separately */
+    rp.common->valid_flag1 = DS_OUTPUT_VALID_FLAG1_VIBRATION_ATTENUATION_ENABLE;
+    rp.common->reduce_motor_power = (uint8_t)((rumble_attenuation & 0x07) | ((trigger_attenuation & 0x07) << 4 ));
+
+    dualsense_send_output_report(ds, &rp);
+
+    return 0;
+}
+
 static int command_trigger(struct dualsense *ds, char *trigger, uint8_t mode, uint8_t param1, uint8_t param2, uint8_t param3, uint8_t param4, uint8_t param5, uint8_t param6, uint8_t param7, uint8_t param8, uint8_t param9 )
 {
     struct dualsense_output_report rp;
@@ -1145,6 +1160,7 @@ static void print_help(void)
     printf("  microphone-led STATE                     Enable (on) or disable (off) microphone LED\n");
     printf("  speaker STATE                            Toggle to 'internal' speaker, 'headphone' or both\n");
     printf("  volume VOLUME                            Set audio volume (0-255) of internal speaker and headphone\n");
+    printf("  attenuation RUMBLE TRIGGER               Set the attenuation (0-7) of rumble/haptic motors and trigger vibration\n");
     printf("  trigger TRIGGER off                      remove all effects\n");
     printf("  trigger TRIGGER feedback POSITION STRENGTH\n\
                                            set a resistance starting at position with a defined strength\n");
@@ -1296,6 +1312,16 @@ int main(int argc, char *argv[])
             return 1;
         }
         return command_volume(&ds, atoi(argv[2]));
+    } else if (!strcmp(argv[1], "attenuation")) {
+        if (argc != 4) {
+            fprintf(stderr, "Invalid arguments\n");
+            return 2;
+        }
+        if ((atoi(argv[2]) > 7) | (atoi(argv[3]) > 7)) {
+            fprintf(stderr, "Invalid attenuation\n");
+            return 1;
+        }
+        return command_vibration_attenuation(&ds, atoi(argv[2]), atoi(argv[3]));
     } else if (!strcmp(argv[1], "trigger")) {
         if (argc < 4) {
             fprintf(stderr, "Invalid arguments\n");
