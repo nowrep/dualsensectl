@@ -5,7 +5,7 @@ _dualsensectl()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     opts="--help --version"
-    verbs=(power-off battery lightbar player-leds microphone microphone-led speaker volume)
+    verbs=(power-off battery lightbar player-leds microphone microphone-led speaker volume trigger)
 
     if [[ ${cur} = -* ]] ; then
         COMPREPLY=( $(compgen -W '${opts}' -- "$cur") )
