@@ -24,6 +24,9 @@ Linux tool for controlling Sony PlayStation 5 DualSense controller.
       trigger TRIGGER off                      remove all effects
       trigger TRIGGER feedback POSITION STRENGTH  set a resistance starting at position with a defined strength
       trigger TRIGGER weapon START STOP STRENGTH  Emulate weapon like gun trigger
+      trigger TRIGGER bow START STOP STRENGTH SNAPFORCE    Emulate weapon like bow
+      trigger TRIGGER galloping START STOP FIRST_FOOT SECOND_FOOT FREQUENCY    Emulate a galloping
+      trigger TRIGGER machine START STOP STRENGTH_A STRENGTH_B FREQUENCY PERIOD    Switch vibration between to strength at a specified period
       trigger TRIGGER vibration POSITION AMPLITUDE FREQUENCY  Vibrates motor arm around specified position
       trigger TRIGGER feedback-raw STRENGTH[10]  set a resistance starting using array of strength
       trigger TRIGGER vibration-raw AMPLITUDE[10] FREQUENCY  Vibrates motor arm at position and strength specified by an array of amplitude

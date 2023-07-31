@@ -4,12 +4,22 @@ _dualsensectl()
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
+    prevprev="${COMP_WORDS[COMP_CWORD-2]}"
     opts="--help --version"
     verbs=(power-off battery info lightbar player-leds microphone microphone-led speaker volume trigger)
+    effects=(off feedback weapon bow galloping machine vibration feedback-raw vibration-raw)
 
     if [[ ${cur} = -* ]] ; then
         COMPREPLY=( $(compgen -W '${opts}' -- "$cur") )
-    else
+    elif [[ ${prev} = lightbar ]] ; then
+        COMPREPLY=( $(compgen -W 'on off' -- "$cur") )
+    elif [[ ${prev} = speaker ]] ; then
+        COMPREPLY=( $(compgen -W 'internal headphone both' -- "$cur") )
+    elif [[ ${prev} = trigger ]] ; then
+        COMPREPLY=( $(compgen -W 'left both right' -- "$cur") )
+    elif [[ ${prevprev} = trigger ]] ; then
+        COMPREPLY=( $(compgen -W '${effects[*]}' -- "$cur") )
+    elif [[ $COMP_CWORD < 2 ]] ; then
         COMPREPLY=( $(compgen -W '${verbs[*]}' -- "$cur") )
     fi
 }
