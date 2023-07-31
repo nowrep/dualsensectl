@@ -89,6 +89,14 @@
 #define DS_STATUS_CHARGING 0xF0
 #define DS_STATUS_CHARGING_SHIFT 4
 
+#define DS_TRIGGER_EFFECT_OFF 0x05
+#define DS_TRIGGER_EFFECT_FEEDBACK 0x21
+#define DS_TRIGGER_EFFECT_BOW 0x22
+#define DS_TRIGGER_EFFECT_GALLOPING 0x23
+#define DS_TRIGGER_EFFECT_WEAPON 0x25
+#define DS_TRIGGER_EFFECT_VIBRATION 0x26
+#define DS_TRIGGER_EFFECT_MACHINE 0x27
+
 struct dualsense_touch_point {
     uint8_t contact;
     uint8_t x_lo;
@@ -762,7 +770,7 @@ static int command_trigger(struct dualsense *ds, char *trigger, uint8_t mode, ui
 
 static int command_trigger_off(struct dualsense *ds, char *trigger)
 {
-    return command_trigger(ds, trigger, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    return command_trigger(ds, trigger, DS_TRIGGER_EFFECT_OFF, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
 static int trigger_bitpacking_array(struct dualsense *ds, char *trigger, uint8_t mode, uint8_t strength[10], uint8_t frequency)
@@ -794,12 +802,12 @@ static int trigger_bitpacking_array(struct dualsense *ds, char *trigger, uint8_t
 
 static int command_trigger_feedback(struct dualsense *ds, char *trigger, uint8_t position, uint8_t strength)
 {
-    if (position > 9 || !(position > 0)) {
+    if (position > 9) {
         fprintf(stderr, "position must be between 0 and 9\n");
         return 1;
     }
     if (strength > 8 || !(strength > 0)) {
-        fprintf(stderr, "strength must be between 0 and 8\n");
+        fprintf(stderr, "strength must be between 1 and 8\n");
         return 1;
     }
     uint8_t strength_array[10] = {0};
@@ -807,7 +815,7 @@ static int command_trigger_feedback(struct dualsense *ds, char *trigger, uint8_t
         strength_array[i] = strength;
     }
 
-    return trigger_bitpacking_array(ds, trigger, 0x21, strength_array, 0);
+    return trigger_bitpacking_array(ds, trigger, DS_TRIGGER_EFFECT_FEEDBACK, strength_array, 0);
 }
 
 static int command_trigger_weapon(struct dualsense *ds, char *trigger, uint8_t start_position, uint8_t end_position, uint8_t strength)
@@ -826,16 +834,114 @@ static int command_trigger_weapon(struct dualsense *ds, char *trigger, uint8_t s
     }
 
     uint16_t start_stop_zones = (uint16_t)((1 << start_position) | (1 << end_position));
-    return command_trigger(ds, trigger, 0x25,
+    return command_trigger(ds, trigger, DS_TRIGGER_EFFECT_WEAPON,
                            (uint8_t)((start_stop_zones >> 0) & 0xff),
                            (uint8_t)((start_stop_zones >> 8) & 0xff),
                            strength-1,
                            0, 0, 0, 0, 0, 0);
 }
 
+static int command_trigger_bow(struct dualsense *ds, char *trigger, uint8_t start_position, uint8_t end_position, uint8_t strength, uint8_t snap_force)
+{
+    if (start_position > 8 || !(start_position > 0)) {
+        fprintf(stderr, "start position must be between 0 and 8\n");
+        return 1;
+    }
+    if (end_position > 8 || end_position < start_position+1) {
+        fprintf(stderr, "end position must be between start position+1 and 8\n");
+        return 1;
+    }
+    if (strength > 8 || !(strength > 0)) {
+        fprintf(stderr, "strength must be between 1 and 8\n");
+        return 1;
+    }
+    if (snap_force > 8 || !(snap_force > 0)) {
+        fprintf(stderr, "snap_force must be between 1 and 8\n");
+        return 1;
+    }
+
+    uint16_t start_stop_zones = (uint16_t)((1 << start_position) | (1 << end_position));
+    uint32_t force_pair =  (uint16_t)(((strength -1) & 0x07) | (((snap_force -1 ) & 0x07) << 3 ));
+    return command_trigger(ds, trigger, DS_TRIGGER_EFFECT_BOW,
+                           (uint8_t)((start_stop_zones >> 0) & 0xff),
+                           (uint8_t)((start_stop_zones >> 8) & 0xff),
+                           (uint8_t)((force_pair >> 0) & 0xff),
+                           0, 0, 0, 0, 0, 0);
+}
+
+static int command_trigger_galloping(struct dualsense *ds, char *trigger, uint8_t start_position, uint8_t end_position, uint8_t first_foot, uint8_t second_foot, uint8_t frequency)
+{
+    if (start_position > 8) {
+        fprintf(stderr, "start position must be between 0 and 8\n");
+        return 1;
+    }
+    if (end_position > 9 || end_position < start_position+1) {
+        fprintf(stderr, "end position must be between start position+1 and 9\n");
+        return 1;
+    }
+    if (first_foot > 6) {
+        fprintf(stderr, "first_foot must be between 0 and 8\n");
+        return 1;
+    }
+    if (second_foot > 7 || second_foot < first_foot+1) {
+        fprintf(stderr, "second_foot must be between first_foot+1 and 8\n");
+        return 1;
+    }
+
+    if (!(frequency > 0)) {
+        fprintf(stderr, "frequency must be greater than 0\n");
+        return 1;
+    }
+    if (frequency > 8) {
+        fprintf(stdout, "frequency has a better effect when lower than 8\n");
+    }
+    uint16_t start_stop_zones = (uint16_t)((1 << start_position) | (1 << end_position));
+    uint32_t ratio =  (uint16_t)((second_foot & 0x07) | ((first_foot & 0x07) << 3 ));
+    return command_trigger(ds, trigger, DS_TRIGGER_EFFECT_GALLOPING,
+                           (uint8_t)((start_stop_zones >> 0) & 0xff),
+                           (uint8_t)((start_stop_zones >> 8) & 0xff),
+                           (uint8_t)((ratio >> 0) & 0xff),
+                           frequency,
+                           0, 0, 0, 0, 0);
+}
+
+static int command_trigger_machine(struct dualsense *ds, char *trigger, uint8_t start_position, uint8_t end_position, uint8_t strength_a, uint8_t strength_b, uint8_t frequency, uint8_t period)
+{
+    // if start_position == 0 nothing happen
+    if (start_position > 8 || !(start_position > 0)) {
+        fprintf(stderr, "start position must be between 1 and 8\n");
+        return 1;
+    }
+    if (end_position > 9 || end_position < start_position+1) {
+        fprintf(stderr, "end position must be between start position+1 and 9\n");
+        return 1;
+    }
+    if (strength_a > 7) {
+        fprintf(stderr, "strength_a position must be between 0 and 7\n");
+        return 1;
+    }
+    if (strength_b > 7) {
+        fprintf(stderr, "strength_b position must be between 0 and 7\n");
+        return 1;
+    }
+    if (!(frequency > 0)) {
+        fprintf(stderr, "frequency must be greater than 0\n");
+        return 1;
+    }
+    uint16_t start_stop_zones = (uint16_t)((1 << start_position) | (1 << end_position));
+    uint32_t force_pair =  (uint16_t)((strength_a & 0x07) | ((strength_b & 0x07) << 3 ));
+    return command_trigger(ds, trigger, DS_TRIGGER_EFFECT_MACHINE,
+                           (uint8_t)((start_stop_zones >> 0) & 0xff),
+                           (uint8_t)((start_stop_zones >> 8) & 0xff),
+                           (uint8_t)((force_pair >> 0) & 0xff),
+                           frequency,
+                           period,
+                           0, 0, 0, 0);
+}
+
 static int command_trigger_vibration(struct dualsense *ds, char *trigger, uint8_t position, uint8_t amplitude, uint8_t frequency)
 {
-    if (position > 9 || !(position > 0)) {
+    if (position > 9) {
         fprintf(stderr, "position must be between 0 and 9\n");
         return 1;
     }
@@ -852,18 +958,18 @@ static int command_trigger_vibration(struct dualsense *ds, char *trigger, uint8_
     for (int i = position; i < 10; i++) {
         strength_array[i] = amplitude;
     }
-    return trigger_bitpacking_array(ds, trigger, 0x26, strength_array, frequency);
+    return trigger_bitpacking_array(ds, trigger, DS_TRIGGER_EFFECT_VIBRATION, strength_array, frequency);
 
 }
 
 static int command_trigger_feedback_raw(struct dualsense *ds, char *trigger, uint8_t strength[10] )
 {
-    return trigger_bitpacking_array(ds, trigger, 0x21, strength, 0);
+    return trigger_bitpacking_array(ds, trigger, DS_TRIGGER_EFFECT_FEEDBACK, strength, 0);
 }
 
 static int command_trigger_vibration_raw(struct dualsense *ds, char *trigger, uint8_t strength[10], uint8_t frequency)
 {
-    return trigger_bitpacking_array(ds, trigger, 0x26, strength, frequency);
+    return trigger_bitpacking_array(ds, trigger, DS_TRIGGER_EFFECT_VIBRATION, strength, frequency);
 }
 
 static bool sh_command_wait = false;
@@ -1040,11 +1146,22 @@ static void print_help(void)
     printf("  speaker STATE                            Toggle to 'internal' speaker, 'headphone' or both\n");
     printf("  volume VOLUME                            Set audio volume (0-255) of internal speaker and headphone\n");
     printf("  trigger TRIGGER off                      remove all effects\n");
-    printf("  trigger TRIGGER feedback POSITION STRENGTH  set a resistance starting at position with a defined strength\n");
-    printf("  trigger TRIGGER weapon START STOP STRENGTH  Emulate weapon like gun trigger\n");
-    printf("  trigger TRIGGER vibration POSITION AMPLITUDE FREQUENCY  Vibrates motor arm around specified position\n");
-    printf("  trigger TRIGGER feedback-raw STRENGTH[10]  set a resistance starting using array of strength\n");
-    printf("  trigger TRIGGER vibration-raw AMPLITUDE[10] FREQUENCY  Vibrates motor arm at position and strength specified by an array of amplitude\n");
+    printf("  trigger TRIGGER feedback POSITION STRENGTH\n\
+                                           set a resistance starting at position with a defined strength\n");
+    printf("  trigger TRIGGER weapon START STOP STRENGTH\n\
+                                           Emulate weapon like gun trigger\n");
+    printf("  trigger TRIGGER bow START STOP STRENGTH SNAPFORCE\n\
+                                           Emulate weapon like bow\n");
+    printf("  trigger TRIGGER galloping START STOP FIRST_FOOT SECOND_FOOT FREQUENCY\n\
+                                           Emulate a galloping\n");
+    printf("  trigger TRIGGER machine START STOP STRENGTH_A STRENGTH_B FREQUENCY PERIOD\n\
+                                           Switch vibration between to strength at a specified period\n");
+    printf("  trigger TRIGGER vibration POSITION AMPLITUDE FREQUENCY \n\
+                                           Vibrates motor arm around specified position\n");
+    printf("  trigger TRIGGER feedback-raw STRENGTH[10]\n\
+                                           set a resistance starting using array of strength\n");
+    printf("  trigger TRIGGER vibration-raw AMPLITUDE[10] FREQUENCY\n\
+                                           Vibrates motor arm at position and strength specified by an array of amplitude\n");
     printf("  trigger TRIGGER MODE [PARAMS]            set the trigger (left, right or both) mode with parameters (up to 9)\n");
     printf("  monitor [add COMMAND] [remove COMMAND]   Run shell command COMMAND on add/remove events\n");
 }
@@ -1198,6 +1315,24 @@ int main(int argc, char *argv[])
                 return 2;
             }
             return command_trigger_weapon(&ds, argv[2], atoi(argv[4]), atoi(argv[5]), atoi(argv[6]));
+        } else if (!strcmp(argv[3], "bow")) {
+            if (argc < 8) {
+                fprintf(stderr, "bow mode need four parameters\n");
+                return 2;
+            }
+            return command_trigger_bow(&ds, argv[2], atoi(argv[4]), atoi(argv[5]), atoi(argv[6]), atoi(argv[7]));
+        } else if (!strcmp(argv[3], "galloping")) {
+            if (argc < 9) {
+                fprintf(stderr, "galloping mode need five parameters\n");
+                return 2;
+            }
+            return command_trigger_galloping(&ds, argv[2], atoi(argv[4]), atoi(argv[5]), atoi(argv[6]), atoi(argv[7]), atoi(argv[8]));
+        } else if (!strcmp(argv[3], "machine")) {
+            if (argc < 10) {
+                fprintf(stderr, "machine mode need six parameters\n");
+                return 2;
+            }
+            return command_trigger_machine(&ds, argv[2], atoi(argv[4]), atoi(argv[5]), atoi(argv[6]), atoi(argv[7]), atoi(argv[8]), atoi(argv[9]));
         } else if (!strcmp(argv[3], "vibration")) {
             if (argc < 7) {
                 fprintf(stderr, "vibration mode need three parameters\n");
