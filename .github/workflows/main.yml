@@ -1,0 +1,25 @@
+name: Main
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Dependencies
+      run: |
+        sudo apt update
+        sudo apt install libhidapi-dev libdbus-1-dev libudev-dev
+
+    - name: Build
+      run: make -C ${{github.workspace}}
+
+    - name: Install
+      run: sudo make -C ${{github.workspace}} install
