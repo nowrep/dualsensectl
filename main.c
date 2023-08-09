@@ -1257,6 +1257,11 @@ int main(int argc, char *argv[])
         argv += 2;
     }
 
+    if (argc < 2) {
+        print_help();
+        return 1;
+    }
+
     struct dualsense ds;
     if (!dualsense_init(&ds, dev_serial)) {
         return 1;
