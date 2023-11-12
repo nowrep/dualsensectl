@@ -470,7 +470,7 @@ static int command_power_off(struct dualsense *ds)
     return 0;
 }
 
-static int command_battery(struct dualsense *ds)
+static int command_battery(struct dualsense *ds, bool as_json)
 {
     uint8_t data[DS_INPUT_REPORT_BT_SIZE];
     int res = hid_read_timeout(ds->dev, data, sizeof(data), 1000);
@@ -531,11 +531,16 @@ static int command_battery(struct dualsense *ds)
     }
 #undef min
 
+    if (as_json)
+    {
+        printf("{\"battery\": %d, \"status\": \"%s\"}\n", (int)battery_capacity, battery_status);
+        return 0;
+    }
     printf("%d %s\n", (int)battery_capacity, battery_status);
     return 0;
 }
 
-static int command_info(struct dualsense *ds)
+static int command_info(struct dualsense *ds, bool as_json)
 {
     uint8_t buf[DS_FEATURE_REPORT_FIRMWARE_INFO_SIZE];
     memset(buf, 0, sizeof(buf));
@@ -549,6 +554,12 @@ static int command_info(struct dualsense *ds)
     struct dualsense_feature_report_firmware *ds_report;
     ds_report = (struct dualsense_feature_report_firmware *)&buf;
 
+    if (as_json)
+    {
+        printf("{\"hardware\": \"%x\", \"firmware\": \"%x\", \"build_date\": \"%.11s\", \"build_time\": \"%.8s\", \"fw_type\": %i, \"sw_series\": %i}\n",
+               ds_report->hardware_info, ds_report->firmware_version, ds_report->build_date, ds_report->build_time, ds_report->fw_type, ds_report->sw_series);
+        return 0;
+    }
     printf("hardware: %x,\tfirmware: %x\n", ds_report->hardware_info, ds_report->firmware_version);
     printf("build_date: %.11s,\tbuild_time: %.8s\n", ds_report->build_date, ds_report->build_time);
     printf("fw_type: %i,\tsw_series %i\n", ds_report->fw_type, ds_report->sw_series);
@@ -1187,7 +1198,7 @@ static void print_version(void)
     printf("%s\n", DUALSENSECTL_VERSION);
 }
 
-static int list_devices(void)
+static int list_devices(bool as_json)
 {
     struct hid_device_info *devs = hid_enumerate(DS_VENDOR_ID, DS_PRODUCT_ID);
     if (!devs) {
@@ -1196,9 +1207,27 @@ static int list_devices(void)
     }
     printf("Devices:\n");
     struct hid_device_info *dev = devs;
-    while (dev) {
-        printf(" %ls (%s)\n", dev->serial_number ? dev->serial_number : L"???", dev->interface_number == -1 ? "Bluetooth" : "USB");
-        dev = dev->next;
+    switch (as_json)
+    {
+    case true:
+        printf("[");
+        while (dev)
+        {
+            printf(
+                "{\"path\":\"%s\",\"serial_number\":\"%ls\",\"interface_number\":\"%s\"}%s\n",
+                dev->path, dev->serial_number ? dev->serial_number : L"???", dev->interface_number == -1 ? "Bluetooth" : "USB", dev->next ? "," : "");
+            dev = dev->next;
+        }
+        printf("]");
+        break;
+
+    default:
+        while (dev)
+        {
+            printf(" %ls (%s)\n", dev->serial_number ? dev->serial_number : L"???", dev->interface_number == -1 ? "Bluetooth" : "USB");
+            dev = dev->next;
+        }
+        break;
     }
     return 0;
 }
@@ -1219,7 +1248,10 @@ int main(int argc, char *argv[])
         print_version();
         return 0;
     } else if (!strcmp(argv[1], "-l")) {
-        return list_devices();
+        if (argc == 3 && !strcmp(argv[2], "-o=json")) {
+            return list_devices(true);
+        }
+        return list_devices(false);
     } else if (!strcmp(argv[1], "monitor")) {
         argc -= 2;
         argv += 2;
@@ -1270,9 +1302,17 @@ int main(int argc, char *argv[])
     if (!strcmp(argv[1], "power-off")) {
         return command_power_off(&ds);
     } else if (!strcmp(argv[1], "battery")) {
-        return command_battery(&ds);
+        // check if next argument is -o=json
+        if (argc == 3 && !strcmp(argv[2], "-o=json")) {
+            return command_battery(&ds, true);
+        }
+        return command_battery(&ds, false);
     } else if (!strcmp(argv[1], "info")) {
-        return command_info(&ds);
+        // check if next argument is -o=json
+        if (argc == 3 && !strcmp(argv[2], "-o=json")) {
+            return command_info(&ds, true);
+        }
+        return command_info(&ds, false);
     } else if (!strcmp(argv[1], "lightbar")) {
         if (argc == 3) {
             return command_lightbar1(&ds, argv[2]);
