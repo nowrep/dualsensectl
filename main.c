@@ -552,7 +552,8 @@ static int command_info(struct dualsense *ds)
     printf("hardware: %x,\tfirmware: %x\n", ds_report->hardware_info, ds_report->firmware_version);
     printf("build_date: %.11s,\tbuild_time: %.8s\n", ds_report->build_date, ds_report->build_time);
     printf("fw_type: %i,\tsw_series %i\n", ds_report->fw_type, ds_report->sw_series);
-    /*printf("device_info: %.12s,\tupdate_version: %i\n", ds_report->device_info, ds_report->update_version);
+    printf("update_version: %04x\n", ds_report->update_version);
+    /*printf("device_info: %.12s\n", ds_report->device_info);
     printf("update_image_info: %c,\tupdate_unk: %c\n", ds_report->update_image_info, ds_report->update_unk);
     printf("fw_version_1: %i,\tfw_version_2: %i,\tfw_version_3: %i\n", ds_report->fw_version_1, ds_report->fw_version_2, ds_report->fw_version_3);
     */
