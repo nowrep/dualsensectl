@@ -7,7 +7,7 @@ LIBS   += $(shell pkg-config --libs hidapi-hidraw)
 LIBS   += $(shell pkg-config --libs libudev)
 
 TARGET = dualsensectl
-VERSION = 0.4
+VERSION = 0.5
 
 ifeq ($(BUILD),debug)
 CFLAGS += -O0 -g
