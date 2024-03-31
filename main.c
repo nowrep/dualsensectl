@@ -416,8 +416,6 @@ static bool dualsense_bt_disconnect(struct dualsense *ds)
                 int props_count = dbus_message_iter_get_element_count(&ifacedict_kv);
                 DBusMessageIter propdict_entry, propdict_kv;
                 dbus_message_iter_recurse(&ifacedict_kv, &propdict_entry);
-                char *address = NULL;
-                int connected = 0;
                 while (props_count-- && !ds_path) {
                     dbus_message_iter_recurse(&propdict_entry, &propdict_kv);
                     dbus_message_iter_get_basic(&propdict_kv, &prop);
@@ -425,16 +423,13 @@ static bool dualsense_bt_disconnect(struct dualsense *ds)
                     if (!strcmp(prop, "Address")) {
                         dbus_message_iter_next(&propdict_kv);
                         dbus_message_iter_recurse(&propdict_kv, &variant);
+                        char *address = NULL;
                         dbus_message_iter_get_basic(&variant, &address);
-                    } else if (!strcmp(prop, "Connected")) {
-                        dbus_message_iter_next(&propdict_kv);
-                        dbus_message_iter_recurse(&propdict_kv, &variant);
-                        dbus_message_iter_get_basic(&variant, &connected);
+                        if (!strcmp(address, ds->mac_address) && !ds_path) {
+                            ds_path = path;
+                        }
                     }
                     dbus_message_iter_next(&propdict_entry);
-                }
-                if (connected && address && !strcmp(address, ds->mac_address) && !ds_path) {
-                    ds_path = path;
                 }
             }
             dbus_message_iter_next(&ifacedict_entry);
