@@ -996,7 +996,9 @@ static void run_sh_command(const char *command, const char *serial_number)
         }
         if (pid == 0) {
             setenv("DS_DEV", serial_number, 1);
-            system(command);
+            if (system(command) < 0) {
+                perror("system");
+            }
             exit(1);
         } else if (pid < 0) {
             perror("fork");
@@ -1018,7 +1020,9 @@ static uint32_t read_file_hex(const char *path)
     if (!f) {
         return out;
     }
-    fscanf(f, "%x", &out);
+    if (fscanf(f, "%x", &out) != 1) {
+        fprintf(stderr, "Failed to read %s\n", path);
+    }
     fclose(f);
     return out;
 }
@@ -1029,7 +1033,9 @@ static void read_file_str(const char *path, char *buf, size_t size)
     if (!f) {
         return;
     }
-    fread(buf, size, 1, f);
+    if (fread(buf, size, 1, f) != 1) {
+        fprintf(stderr, "Failed to read %s\n", path);
+    }
     buf[size - 1] = '\0';
     fclose(f);
 }
