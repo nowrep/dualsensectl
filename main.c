@@ -1334,6 +1334,10 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Invalid arguments\n");
             return 2;
         }
+        if (strcmp(argv[2], "left") && strcmp(argv[2], "right") && strcmp(argv[2], "both")) {
+            fprintf(stderr, "Invalid argument: TRIGGER must be either \"left\", \"right\" or \"both\"\n");
+            return 2;
+        }
         if (!strcmp(argv[3], "off")) {
             return command_trigger_off(&ds, argv[2]);
         } else if (!strcmp(argv[3], "feedback")) {
