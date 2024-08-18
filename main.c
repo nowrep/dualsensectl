@@ -23,6 +23,7 @@
 
 #define DS_VENDOR_ID 0x054c
 #define DS_PRODUCT_ID 0x0ce6
+#define DS_EDGE_PRODUCT_ID 0x0df2
 
 /* Seed values for DualShock4 / DualSense CRC32 for different report types. */
 #define PS_INPUT_CRC32_SEED 0xA1
@@ -311,6 +312,18 @@ static bool compare_serial(const char *s, const wchar_t *dev)
     return true;
 }
 
+static struct hid_device_info *dualsense_hid_enumerate(void)
+{
+    struct hid_device_info *devs;
+    struct hid_device_info **end = &devs;
+    *end = hid_enumerate(DS_VENDOR_ID, DS_PRODUCT_ID);
+    while (*end) {
+        end = &(*end)->next;
+    }
+    *end = hid_enumerate(DS_VENDOR_ID, DS_EDGE_PRODUCT_ID);
+    return devs;
+}
+
 static bool dualsense_init(struct dualsense *ds, const char *serial)
 {
     bool ret = false;
@@ -318,7 +331,7 @@ static bool dualsense_init(struct dualsense *ds, const char *serial)
     memset(ds, 0, sizeof(*ds));
 
     bool found = false;
-    struct hid_device_info *devs = hid_enumerate(DS_VENDOR_ID, DS_PRODUCT_ID);
+    struct hid_device_info *devs = dualsense_hid_enumerate();
     struct hid_device_info *dev = devs;
     while (dev) {
         if (compare_serial(serial, dev->serial_number)) {
@@ -338,7 +351,7 @@ static bool dualsense_init(struct dualsense *ds, const char *serial)
         goto out;
     }
 
-    ds->dev = hid_open(DS_VENDOR_ID, DS_PRODUCT_ID, dev->serial_number);
+    ds->dev = hid_open(DS_VENDOR_ID, dev->product_id, dev->serial_number);
     if (!ds->dev) {
         fprintf(stderr, "Failed to open device: %ls\n", hid_error(NULL));
         ret = false;
@@ -1068,7 +1081,7 @@ static bool check_dualsense_device(struct udev_device *dev, char serial_number[1
     strcpy(baseend, "uniq");
     read_file_str(idpath, serial_number, 18);
 
-    return vendor == DS_VENDOR_ID && product == DS_PRODUCT_ID;
+    return vendor == DS_VENDOR_ID && (product == DS_PRODUCT_ID || product == DS_EDGE_PRODUCT_ID);
 }
 
 static void add_device(struct udev_device *dev)
@@ -1191,7 +1204,7 @@ static void print_version(void)
 
 static int list_devices(void)
 {
-    struct hid_device_info *devs = hid_enumerate(DS_VENDOR_ID, DS_PRODUCT_ID);
+    struct hid_device_info *devs = dualsense_hid_enumerate();
     if (!devs) {
         fprintf(stderr, "No devices found\n");
         return 1;
