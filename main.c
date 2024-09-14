@@ -610,7 +610,18 @@ static int command_lightbar3(struct dualsense *ds, uint8_t red, uint8_t green, u
 
 static int command_player_leds(struct dualsense *ds, uint8_t number)
 {
-    if (number > 5) {
+    static const int player_ids[] = {
+        0,
+        BIT(2),
+        BIT(3) | BIT(1),
+        BIT(4) | BIT(2) | BIT(0),
+        BIT(4) | BIT(3) | BIT(1) | BIT(0),
+        BIT(4) | BIT(3) | BIT(2) | BIT(1) | BIT(0),
+        BIT(4) | BIT(0),
+        BIT(3) | BIT(2) | BIT(1),
+    };
+
+    if (number >= sizeof(player_ids)/sizeof(*player_ids)) {
         fprintf(stderr, "Invalid player number\n");
         return 1;
     }
@@ -618,15 +629,6 @@ static int command_player_leds(struct dualsense *ds, uint8_t number)
     struct dualsense_output_report rp;
     uint8_t rbuf[DS_OUTPUT_REPORT_BT_SIZE];
     dualsense_init_output_report(ds, &rp, rbuf);
-
-    static const int player_ids[6] = {
-        0,
-        BIT(2),
-        BIT(3) | BIT(1),
-        BIT(4) | BIT(2) | BIT(0),
-        BIT(4) | BIT(3) | BIT(1) | BIT(0),
-        BIT(4) | BIT(3) | BIT(2) | BIT(1) | BIT(0)
-    };
 
     rp.common->valid_flag1 = DS_OUTPUT_VALID_FLAG1_PLAYER_INDICATOR_CONTROL_ENABLE;
     rp.common->player_leds = player_ids[number];
@@ -1172,7 +1174,7 @@ static void print_help(void)
     printf("  info                                     Get the controller firmware info\n");
     printf("  lightbar STATE                           Enable (on) or disable (off) lightbar\n");
     printf("  lightbar RED GREEN BLUE [BRIGHTNESS]     Set lightbar color and brightness (0-255)\n");
-    printf("  player-leds NUMBER                       Set player LEDs (1-5) or disabled (0)\n");
+    printf("  player-leds NUMBER                       Set player LEDs (1-7) or disabled (0)\n");
     printf("  microphone STATE                         Enable (on) or disable (off) microphone\n");
     printf("  microphone-led STATE                     Enable (on), disable (off) or pulsate (pulse) microphone LED\n");
     printf("  speaker STATE                            Toggle to 'internal' speaker, 'headphone' or both\n");
