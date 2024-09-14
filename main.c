@@ -668,6 +668,8 @@ static int command_microphone_led(struct dualsense *ds, char *state)
         rp.common->mute_button_led = 1;
     } else if (!strcmp(state, "off")) {
         rp.common->mute_button_led = 0;
+    } else if (!strcmp(state, "pulse")) {
+        rp.common->mute_button_led = 2;
     } else {
         fprintf(stderr, "Invalid state\n");
         return 1;
@@ -1172,7 +1174,7 @@ static void print_help(void)
     printf("  lightbar RED GREEN BLUE [BRIGHTNESS]     Set lightbar color and brightness (0-255)\n");
     printf("  player-leds NUMBER                       Set player LEDs (1-5) or disabled (0)\n");
     printf("  microphone STATE                         Enable (on) or disable (off) microphone\n");
-    printf("  microphone-led STATE                     Enable (on) or disable (off) microphone LED\n");
+    printf("  microphone-led STATE                     Enable (on), disable (off) or pulsate (pulse) microphone LED\n");
     printf("  speaker STATE                            Toggle to 'internal' speaker, 'headphone' or both\n");
     printf("  volume VOLUME                            Set audio volume (0-255) of internal speaker and headphone\n");
     printf("  attenuation RUMBLE TRIGGER               Set the attenuation (0-7) of rumble/haptic motors and trigger vibration\n");
