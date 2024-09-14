@@ -67,6 +67,7 @@
 #define DS_OUTPUT_VALID_FLAG1_VIBRATION_ATTENUATION_ENABLE BIT(6)
 #define DS_OUTPUT_VALID_FLAG1_AUDIO_CONTROL2_ENABLE BIT(7)
 
+#define DS_OUTPUT_VALID_FLAG2_LED_BRIGHTNESS_CONTROL_ENABLE BIT(0)
 #define DS_OUTPUT_VALID_FLAG2_LIGHTBAR_SETUP_CONTROL_ENABLE BIT(1)
 #define DS_OUTPUT_POWER_SAVE_CONTROL_MIC_MUTE BIT(4)
 #define DS_OUTPUT_POWER_SAVE_CONTROL_AUDIO_MUTE BIT(5)
@@ -607,6 +608,26 @@ static int command_lightbar3(struct dualsense *ds, uint8_t red, uint8_t green, u
 
     return 0;
 }
+
+static int command_led_brightness(struct dualsense *ds, uint8_t number)
+{
+    if (number > 2) {
+        fprintf(stderr, "Invalid brightness level\n");
+        return 1;
+    }
+
+    struct dualsense_output_report rp;
+    uint8_t rbuf[DS_OUTPUT_REPORT_BT_SIZE];
+    dualsense_init_output_report(ds, &rp, rbuf);
+
+    rp.common->valid_flag2 = DS_OUTPUT_VALID_FLAG2_LED_BRIGHTNESS_CONTROL_ENABLE;
+    rp.common->led_brightness = number;
+
+    dualsense_send_output_report(ds, &rp);
+
+    return 0;
+}
+
 
 static int command_player_leds(struct dualsense *ds, uint8_t number, bool instant)
 {
@@ -1174,6 +1195,7 @@ static void print_help(void)
     printf("  info                                     Get the controller firmware info\n");
     printf("  lightbar STATE                           Enable (on) or disable (off) lightbar\n");
     printf("  lightbar RED GREEN BLUE [BRIGHTNESS]     Set lightbar color and brightness (0-255)\n");
+    printf("  led-brightness NUMBER                    Set player and microphone LED dimming (0-2)\n");
     printf("  player-leds NUMBER [instant]             Set player LEDs (1-7) or disabled (0)\n");
     printf("  microphone STATE                         Enable (on) or disable (off) microphone\n");
     printf("  microphone-led STATE                     Enable (on), disable (off) or pulsate (pulse) microphone LED\n");
@@ -1302,6 +1324,12 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Invalid arguments\n");
             return 2;
         }
+    } else if (!strcmp(argv[1], "led-brightness")) {
+        if (argc != 3) {
+            fprintf(stderr, "Invalid arguments\n");
+            return 2;
+        }
+        return command_led_brightness(&ds, atoi(argv[2]));
     } else if (!strcmp(argv[1], "player-leds")) {
         bool instant;
         if (argc == 3) {
