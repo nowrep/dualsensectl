@@ -187,17 +187,22 @@ _Static_assert(sizeof(struct dualsense_output_report_common) == 47, "Bad output 
 
 struct dualsense_output_report_bt {
     uint8_t report_id; /* 0x31 */
-    uint8_t seq_tag;
+    uint8_t flags:4;
+    uint8_t seq_tag:4;
     uint8_t tag;
-    struct dualsense_output_report_common common;
-    uint8_t reserved[24];
+    union {
+        struct dualsense_output_report_common common;
+        uint8_t data[71];
+    };
     uint32_t crc32;
 } __attribute__((packed));
 
 struct dualsense_output_report_usb {
     uint8_t report_id; /* 0x02 */
-    struct dualsense_output_report_common common;
-    uint8_t reserved[15];
+    union {
+        struct dualsense_output_report_common common;
+        uint8_t data[62];
+    };
 } __attribute__((packed));
 
 /*
@@ -267,7 +272,7 @@ static void dualsense_init_output_report(struct dualsense *ds, struct dualsense_
          * Highest 4-bit is a sequence number, which needs to be increased
          * every report. Lowest 4-bit is tag and can be zero for now.
          */
-        bt->seq_tag = (ds->output_seq << 4) | 0x0;
+        bt->seq_tag = ds->output_seq;
         if (++ds->output_seq == 16)
             ds->output_seq = 0;
 
@@ -640,7 +645,6 @@ static int command_led_brightness(struct dualsense *ds, uint8_t number)
 
     return 0;
 }
-
 
 static int command_player_leds(struct dualsense *ds, uint8_t number, bool instant)
 {
