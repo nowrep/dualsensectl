@@ -259,6 +259,11 @@ struct dualsense {
     uint8_t output_seq;
 };
 
+static int atoi_x(const char *s)
+{
+    return strtol(s, NULL, 0);
+}
+
 static void dualsense_init_output_report(struct dualsense *ds, struct dualsense_output_report *rp, void *buf)
 {
     if (ds->bt) {
@@ -1359,8 +1364,8 @@ int main(int argc, char *argv[])
         if (argc == 3) {
             return command_lightbar1(&ds, argv[2]);
         } else if (argc == 5 || argc == 6) {
-            uint8_t brightness = argc == 6 ? atoi(argv[5]) : 255;
-            return command_lightbar3(&ds, atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), brightness);
+            uint8_t brightness = argc == 6 ? atoi_x(argv[5]) : 255;
+            return command_lightbar3(&ds, atoi_x(argv[2]), atoi_x(argv[3]), atoi_x(argv[4]), brightness);
         } else {
             fprintf(stderr, "Invalid arguments\n");
             return 2;
@@ -1370,7 +1375,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Invalid arguments\n");
             return 2;
         }
-        return command_led_brightness(&ds, atoi(argv[2]));
+        return command_led_brightness(&ds, atoi_x(argv[2]));
     } else if (!strcmp(argv[1], "player-leds")) {
         bool instant;
         if (argc == 3) {
@@ -1381,7 +1386,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Invalid arguments\n");
             return 2;
         }
-        return command_player_leds(&ds, atoi(argv[2]), instant);
+        return command_player_leds(&ds, atoi_x(argv[2]), instant);
     } else if (!strcmp(argv[1], "microphone")) {
         if (argc != 3) {
             fprintf(stderr, "Invalid arguments\n");
@@ -1411,21 +1416,21 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Invalid arguments\n");
             return 2;
         }
-        if (atoi(argv[2]) > 255) {
+        if (atoi_x(argv[2]) > 255) {
             fprintf(stderr, "Invalid volume\n");
             return 1;
         }
-        return command_volume(&ds, atoi(argv[2]));
+        return command_volume(&ds, atoi_x(argv[2]));
     } else if (!strcmp(argv[1], "attenuation")) {
         if (argc != 4) {
             fprintf(stderr, "Invalid arguments\n");
             return 2;
         }
-        if ((atoi(argv[2]) > 7) | (atoi(argv[3]) > 7)) {
+        if ((atoi_x(argv[2]) > 7) | (atoi_x(argv[3]) > 7)) {
             fprintf(stderr, "Invalid attenuation\n");
             return 1;
         }
-        return command_vibration_attenuation(&ds, atoi(argv[2]), atoi(argv[3]));
+        return command_vibration_attenuation(&ds, atoi_x(argv[2]), atoi_x(argv[3]));
     } else if (!strcmp(argv[1], "trigger")) {
         if (argc < 4) {
             fprintf(stderr, "Invalid arguments\n");
@@ -1442,65 +1447,65 @@ int main(int argc, char *argv[])
                 fprintf(stderr, "feedback mode need two parameters\n");
                 return 2;
             }
-            return command_trigger_feedback(&ds, argv[2], atoi(argv[4]), atoi(argv[5]));
+            return command_trigger_feedback(&ds, argv[2], atoi_x(argv[4]), atoi_x(argv[5]));
         } else if (!strcmp(argv[3], "weapon")) {
             if (argc < 7) {
                 fprintf(stderr, "weapons mode need three parameters\n");
                 return 2;
             }
-            return command_trigger_weapon(&ds, argv[2], atoi(argv[4]), atoi(argv[5]), atoi(argv[6]));
+            return command_trigger_weapon(&ds, argv[2], atoi_x(argv[4]), atoi_x(argv[5]), atoi_x(argv[6]));
         } else if (!strcmp(argv[3], "bow")) {
             if (argc < 8) {
                 fprintf(stderr, "bow mode need four parameters\n");
                 return 2;
             }
-            return command_trigger_bow(&ds, argv[2], atoi(argv[4]), atoi(argv[5]), atoi(argv[6]), atoi(argv[7]));
+            return command_trigger_bow(&ds, argv[2], atoi_x(argv[4]), atoi_x(argv[5]), atoi_x(argv[6]), atoi_x(argv[7]));
         } else if (!strcmp(argv[3], "galloping")) {
             if (argc < 9) {
                 fprintf(stderr, "galloping mode need five parameters\n");
                 return 2;
             }
-            return command_trigger_galloping(&ds, argv[2], atoi(argv[4]), atoi(argv[5]), atoi(argv[6]), atoi(argv[7]), atoi(argv[8]));
+            return command_trigger_galloping(&ds, argv[2], atoi_x(argv[4]), atoi_x(argv[5]), atoi_x(argv[6]), atoi_x(argv[7]), atoi_x(argv[8]));
         } else if (!strcmp(argv[3], "machine")) {
             if (argc < 10) {
                 fprintf(stderr, "machine mode need six parameters\n");
                 return 2;
             }
-            return command_trigger_machine(&ds, argv[2], atoi(argv[4]), atoi(argv[5]), atoi(argv[6]), atoi(argv[7]), atoi(argv[8]), atoi(argv[9]));
+            return command_trigger_machine(&ds, argv[2], atoi_x(argv[4]), atoi_x(argv[5]), atoi_x(argv[6]), atoi_x(argv[7]), atoi_x(argv[8]), atoi_x(argv[9]));
         } else if (!strcmp(argv[3], "vibration")) {
             if (argc < 7) {
                 fprintf(stderr, "vibration mode need three parameters\n");
                 return 2;
             }
-            return command_trigger_vibration(&ds, argv[2], atoi(argv[4]), atoi(argv[5]), atoi(argv[6]));
+            return command_trigger_vibration(&ds, argv[2], atoi_x(argv[4]), atoi_x(argv[5]), atoi_x(argv[6]));
         } else if (!strcmp(argv[3], "feedback-raw")) {
             if (argc < 14) {
                 fprintf(stderr, "feedback-raw mode need ten parameters\n");
                 return 2;
             }
-            uint8_t strengths[10] = { atoi(argv[4]), atoi(argv[5]), atoi(argv[6]), atoi(argv[7]), atoi(argv[8]), atoi(argv[9]), atoi(argv[10]), atoi(argv[11]), atoi(argv[12]), atoi(argv[13]) };
+            uint8_t strengths[10] = { atoi_x(argv[4]), atoi_x(argv[5]), atoi_x(argv[6]), atoi_x(argv[7]), atoi_x(argv[8]), atoi_x(argv[9]), atoi_x(argv[10]), atoi_x(argv[11]), atoi_x(argv[12]), atoi_x(argv[13]) };
             return command_trigger_feedback_raw(&ds, argv[2], strengths);
         } else if (!strcmp(argv[3], "vibration-raw")) {
             if (argc < 15) {
                 fprintf(stderr, "vibration-raw mode need eleven parameters\n");
                 return 2;
             }
-            uint8_t strengths[10] = { atoi(argv[4]), atoi(argv[5]), atoi(argv[6]), atoi(argv[7]), atoi(argv[8]), atoi(argv[9]), atoi(argv[10]), atoi(argv[11]), atoi(argv[12]), atoi(argv[13]) };
-            return command_trigger_vibration_raw(&ds, argv[2], strengths, atoi(argv[14]));
+            uint8_t strengths[10] = { atoi_x(argv[4]), atoi_x(argv[5]), atoi_x(argv[6]), atoi_x(argv[7]), atoi_x(argv[8]), atoi_x(argv[9]), atoi_x(argv[10]), atoi_x(argv[11]), atoi_x(argv[12]), atoi_x(argv[13]) };
+            return command_trigger_vibration_raw(&ds, argv[2], strengths, atoi_x(argv[14]));
         }
 
         /* mostly to test raw parameters without any kind of bitpacking or range check */
-        uint8_t param1 = argc > 4 ? atoi(argv[4]) : 0;
-        uint8_t param2 = argc > 5 ? atoi(argv[5]) : 0;
-        uint8_t param3 = argc > 6 ? atoi(argv[6]) : 0;
-        uint8_t param4 = argc > 7 ? atoi(argv[7]) : 0;
-        uint8_t param5 = argc > 8 ? atoi(argv[8]) : 0;
-        uint8_t param6 = argc > 9 ? atoi(argv[9]) : 0;
-        uint8_t param7 = argc > 10 ? atoi(argv[10]) : 0;
-        uint8_t param8 = argc > 11 ? atoi(argv[11]) : 0;
-        uint8_t param9 = argc > 12 ? atoi(argv[12]) : 0;
+        uint8_t param1 = argc > 4 ? atoi_x(argv[4]) : 0;
+        uint8_t param2 = argc > 5 ? atoi_x(argv[5]) : 0;
+        uint8_t param3 = argc > 6 ? atoi_x(argv[6]) : 0;
+        uint8_t param4 = argc > 7 ? atoi_x(argv[7]) : 0;
+        uint8_t param5 = argc > 8 ? atoi_x(argv[8]) : 0;
+        uint8_t param6 = argc > 9 ? atoi_x(argv[9]) : 0;
+        uint8_t param7 = argc > 10 ? atoi_x(argv[10]) : 0;
+        uint8_t param8 = argc > 11 ? atoi_x(argv[11]) : 0;
+        uint8_t param9 = argc > 12 ? atoi_x(argv[12]) : 0;
 
-        return command_trigger(&ds, argv[2], atoi(argv[3]), param1, param2, param3, param4, param5, param6, param7, param8, param9);
+        return command_trigger(&ds, argv[2], atoi_x(argv[3]), param1, param2, param3, param4, param5, param6, param7, param8, param9);
     } else {
         fprintf(stderr, "Invalid command\n");
         return 2;
