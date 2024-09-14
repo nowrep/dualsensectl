@@ -1,27 +1,22 @@
-CC = gcc
-CFLAGS += -Wall -Wextra -pedantic
-CFLAGS += $(shell pkg-config --cflags dbus-1)
-CFLAGS += $(shell pkg-config --cflags hidapi-hidraw)
-LIBS   += $(shell pkg-config --libs dbus-1)
-LIBS   += $(shell pkg-config --libs hidapi-hidraw)
-LIBS   += $(shell pkg-config --libs libudev)
+TARGET		:= dualsensectl
+VERSION		:= 0.6
 
-TARGET = dualsensectl
-VERSION = 0.6
+OPTFLAGS	= -O2 -s -DNDEBUG
+CFLAGS		+= $(OPTFLAGS)
 
-ifeq ($(BUILD),debug)
-CFLAGS += -O0 -g
-else
-CFLAGS += -O2 -s -DNDEBUG
-endif
+CFLAGS		+= -DDUALSENSECTL_VERSION=\"$(VERSION)\"
+CFLAGS		+= -Wall -Wextra -pedantic
+CFLAGS		+= $(shell pkg-config --cflags dbus-1)
+CFLAGS		+= $(shell pkg-config --cflags hidapi-hidraw)
+LDFLAGS		+= $(shell pkg-config --libs dbus-1)
+LDFLAGS		+= $(shell pkg-config --libs hidapi-hidraw)
+LDFLAGS		+= $(shell pkg-config --libs libudev)
 
-DEFINES += -DDUALSENSECTL_VERSION=\"$(VERSION)\"
+all: $(TARGET)
 
-all:
-	$(CC) main.c -o $(TARGET) $(DEFINES) $(CFLAGS) $(LIBS)
-
-debug:
-	make "BUILD=debug"
+.PHONE: debug
+debug: OPTFLAGS = -Og -g
+debug: all
 
 install: all
 	install -D -m 755 -p $(TARGET) $(DESTDIR)/usr/bin/$(TARGET)
@@ -32,3 +27,6 @@ uninstall:
 	rm -f $(DESTDIR)/usr/bin/$(TARGET)
 	rm -f $(DESTDIR)/usr/share/bash-completion/completions/$(TARGET)
 	rm -f $(DESTDIR)/usr/share/zsh/site-functions/_$(TARGET)
+
+$(TARGET): main.c
+	$(CC) $(CFLAGS) $< -o $(TARGET) $(LDFLAGS)
