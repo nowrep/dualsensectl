@@ -69,8 +69,15 @@
 
 #define DS_OUTPUT_VALID_FLAG2_LED_BRIGHTNESS_CONTROL_ENABLE BIT(0)
 #define DS_OUTPUT_VALID_FLAG2_LIGHTBAR_SETUP_CONTROL_ENABLE BIT(1)
+#define DS_OUTPUT_VALID_FLAG2_COMPATIBLE_VIBRATION2 BIT(2)
+#define DS_OUTPUT_POWER_SAVE_CONTROL_TOUCH BIT(0)
+#define DS_OUTPUT_POWER_SAVE_CONTROL_MOTION BIT(1)
+#define DS_OUTPUT_POWER_SAVE_CONTROL_HAPTICS BIT(2)
+#define DS_OUTPUT_POWER_SAVE_CONTROL_AUDIO BIT(3)
 #define DS_OUTPUT_POWER_SAVE_CONTROL_MIC_MUTE BIT(4)
-#define DS_OUTPUT_POWER_SAVE_CONTROL_AUDIO_MUTE BIT(5)
+#define DS_OUTPUT_POWER_SAVE_CONTROL_SPEAKER_MUTE BIT(5)
+#define DS_OUTPUT_POWER_SAVE_CONTROL_HEADPHONES_MUTE BIT(6)
+#define DS_OUTPUT_POWER_SAVE_CONTROL_HAPTICS_MUTE BIT(7)
 #define DS_OUTPUT_LIGHTBAR_SETUP_LIGHT_ON BIT(0)
 #define DS_OUTPUT_LIGHTBAR_SETUP_LIGHT_OUT BIT(1)
 
@@ -80,11 +87,16 @@
 #define DS_OUTPUT_AUDIO_FLAG_ECHO_CANCEL BIT(2)
 #define DS_OUTPUT_AUDIO_FLAG_NOISE_CANCEL BIT(3)
 #define DS_OUTPUT_AUDIO_OUTPUT_PATH_SHIFT 4
+#define DS_OUTPUT_AUDIO_INPUT_PATH_SHIFT 6
 #define DS_OUTPUT_AUDIO_FLAG_DISABLE_HEADPHONE BIT(4)
 #define DS_OUTPUT_AUDIO_FLAG_ENABLE_INTERNAL_SPEAKER BIT(5)
 
 /* audio control2 flags */
+#define DS_OUTPUT_AUDIO2_SPEAKER_PREGAIN_SHIFT 0
 #define DS_OUTPUT_AUDIO2_FLAG_BEAM_FORMING BIT(4)
+
+/* haptics flags */
+#define DS_OUTPUT_HAPTICS_FLAG_LOW_PASS_FILTER BIT(0)
 
 /* Status field of DualSense input report. */
 #define DS_STATUS_BATTERY_CAPACITY 0xF
@@ -162,7 +174,8 @@ struct dualsense_output_report_common {
 
     /* LEDs and lightbar */
     uint8_t valid_flag2;
-    uint8_t reserved3[2];
+    uint8_t haptics_flags;
+    uint8_t reserved3[1];
     uint8_t lightbar_setup;
     uint8_t led_brightness;
     uint8_t player_leds;
@@ -703,6 +716,29 @@ static int command_microphone_led(struct dualsense *ds, char *state)
     return 0;
 }
 
+static int command_microphone_mode(struct dualsense *ds, char *state)
+{
+    struct dualsense_output_report rp;
+    uint8_t rbuf[DS_OUTPUT_REPORT_BT_SIZE];
+    dualsense_init_output_report(ds, &rp, rbuf);
+
+    rp.common->valid_flag0 = DS_OUTPUT_VALID_FLAG0_AUDIO_CONTROL_ENABLE;
+    if (!strcmp(state, "chat")) {
+        rp.common->audio_flags = 1 << DS_OUTPUT_AUDIO_INPUT_PATH_SHIFT;
+    } else if (!strcmp(state, "asr")) {
+        rp.common->audio_flags = 2 << DS_OUTPUT_AUDIO_INPUT_PATH_SHIFT;
+    } else if (!strcmp(state, "both")) {
+        rp.common->audio_flags = 0;
+    } else {
+        fprintf(stderr, "Invalid state\n");
+        return 1;
+    }
+
+    dualsense_send_output_report(ds, &rp);
+
+    return 0;
+}
+
 static int command_speaker(struct dualsense *ds, char *state)
 {
     struct dualsense_output_report rp;
@@ -1199,7 +1235,8 @@ static void print_help(void)
     printf("  player-leds NUMBER [instant]             Set player LEDs (1-7) or disabled (0)\n");
     printf("  microphone STATE                         Enable (on) or disable (off) microphone\n");
     printf("  microphone-led STATE                     Enable (on), disable (off) or pulsate (pulse) microphone LED\n");
-    printf("  speaker STATE                            Toggle to 'internal' speaker, 'headphone' or both\n");
+    printf("  microphone-mode STATE                    Toggle microphone usage to 'chat', 'asr' or 'both'\n");
+    printf("  speaker STATE                            Toggle to 'internal' speaker, 'headphone' or 'both'\n");
     printf("  volume VOLUME                            Set audio volume (0-255) of internal speaker and headphone\n");
     printf("  attenuation RUMBLE TRIGGER               Set the attenuation (0-7) of rumble/haptic motors and trigger vibration\n");
     printf("  trigger TRIGGER off                      remove all effects\n");
@@ -1353,6 +1390,12 @@ int main(int argc, char *argv[])
             return 2;
         }
         return command_microphone_led(&ds, argv[2]);
+    } else if (!strcmp(argv[1], "microphone-mode")) {
+        if (argc != 3) {
+            fprintf(stderr, "Invalid arguments\n");
+            return 2;
+        }
+        return command_microphone_mode(&ds, argv[2]);
     } else if (!strcmp(argv[1], "speaker")) {
         if (argc != 3) {
             fprintf(stderr, "Invalid arguments\n");
