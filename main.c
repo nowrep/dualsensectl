@@ -608,7 +608,7 @@ static int command_lightbar3(struct dualsense *ds, uint8_t red, uint8_t green, u
     return 0;
 }
 
-static int command_player_leds(struct dualsense *ds, uint8_t number)
+static int command_player_leds(struct dualsense *ds, uint8_t number, bool instant)
 {
     static const int player_ids[] = {
         0,
@@ -631,7 +631,7 @@ static int command_player_leds(struct dualsense *ds, uint8_t number)
     dualsense_init_output_report(ds, &rp, rbuf);
 
     rp.common->valid_flag1 = DS_OUTPUT_VALID_FLAG1_PLAYER_INDICATOR_CONTROL_ENABLE;
-    rp.common->player_leds = player_ids[number];
+    rp.common->player_leds = player_ids[number] | (instant << 5);
 
     dualsense_send_output_report(ds, &rp);
 
@@ -1174,7 +1174,7 @@ static void print_help(void)
     printf("  info                                     Get the controller firmware info\n");
     printf("  lightbar STATE                           Enable (on) or disable (off) lightbar\n");
     printf("  lightbar RED GREEN BLUE [BRIGHTNESS]     Set lightbar color and brightness (0-255)\n");
-    printf("  player-leds NUMBER                       Set player LEDs (1-7) or disabled (0)\n");
+    printf("  player-leds NUMBER [instant]             Set player LEDs (1-7) or disabled (0)\n");
     printf("  microphone STATE                         Enable (on) or disable (off) microphone\n");
     printf("  microphone-led STATE                     Enable (on), disable (off) or pulsate (pulse) microphone LED\n");
     printf("  speaker STATE                            Toggle to 'internal' speaker, 'headphone' or both\n");
@@ -1303,11 +1303,16 @@ int main(int argc, char *argv[])
             return 2;
         }
     } else if (!strcmp(argv[1], "player-leds")) {
-        if (argc != 3) {
+        bool instant;
+        if (argc == 3) {
+            instant = false;
+        } else if (argc == 4) {
+            instant = !strcmp(argv[3], "instant");
+        } else {
             fprintf(stderr, "Invalid arguments\n");
             return 2;
         }
-        return command_player_leds(&ds, atoi(argv[2]));
+        return command_player_leds(&ds, atoi(argv[2]), instant);
     } else if (!strcmp(argv[1], "microphone")) {
         if (argc != 3) {
             fprintf(stderr, "Invalid arguments\n");
