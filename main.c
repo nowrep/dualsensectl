@@ -5,6 +5,8 @@
  *  Copyright (c) 2020 Sony Interactive Entertainment
  */
 
+#define _XOPEN_SOURCE 700
+
 #include <unistd.h>
 #include <stdio.h>
 #include <stdbool.h>

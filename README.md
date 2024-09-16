@@ -39,13 +39,17 @@ AUR: [dualsensectl-git](https://aur.archlinux.org/packages/dualsensectl-git/)
 
 ### Dependencies
 
+* meson
 * libhidapi-hidraw
 * libdbus-1
 * libudev
 
 ### Building
 
-    make && make install
+    meson setup build
+    cd build
+    ninja
+    ninja install
 
 ### udev rules
 
