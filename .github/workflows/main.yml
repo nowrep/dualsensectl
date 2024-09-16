@@ -16,10 +16,10 @@ jobs:
     - name: Dependencies
       run: |
         sudo apt update
-        sudo apt install libhidapi-dev libdbus-1-dev libudev-dev
+        sudo apt install meson libhidapi-dev libdbus-1-dev libudev-dev
 
     - name: Build
-      run: make -C ${{github.workspace}}
+      run: meson setup ${{github.workspace}}/build && ninja -C ${{github.workspace}}/build
 
     - name: Install
-      run: sudo make -C ${{github.workspace}} install
+      run: sudo ninja -C ${{github.workspace}}/build install
