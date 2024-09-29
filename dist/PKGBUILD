@@ -9,7 +9,7 @@ url='https://github.com/nowrep/dualsensectl'
 license=('GPL2')
 arch=('x86_64')
 depends=('dbus' 'hidapi')
-makedepends=('git' 'gcc')
+makedepends=('git' 'gcc' 'meson')
 source=("$_pkgbase::git+$url")
 sha512sums=('SKIP')
 
