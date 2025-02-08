@@ -1,7 +1,7 @@
 project(
   'dualsensectl',
   'c',
-  version: '0.6.0',
+  version: '0.7.0',
   license: 'GPLv2',
   meson_version: '>=0.58.0',
   default_options: [
