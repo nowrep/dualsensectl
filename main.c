@@ -66,6 +66,7 @@
 #define DS_OUTPUT_VALID_FLAG1_LIGHTBAR_CONTROL_ENABLE BIT(2)
 #define DS_OUTPUT_VALID_FLAG1_RELEASE_LEDS BIT(3)
 #define DS_OUTPUT_VALID_FLAG1_PLAYER_INDICATOR_CONTROL_ENABLE BIT(4)
+#define DS_OUTPUT_VALID_FLAG1_HAPTIC_LOW_PASS_FILTER_CONTROL_ENABLE BIT(5)
 #define DS_OUTPUT_VALID_FLAG1_VIBRATION_ATTENUATION_ENABLE BIT(6)
 #define DS_OUTPUT_VALID_FLAG1_AUDIO_CONTROL2_ENABLE BIT(7)
 
@@ -154,7 +155,7 @@ struct dualsense_output_report_common {
 
     /* Audio controls */
     uint8_t headphone_audio_volume; /* 0-0x7f */
-    uint8_t speaker_audio_volume;   /* 0-255 */
+    uint8_t speaker_audio_volume;   /* 0-0xff */
     uint8_t internal_microphone_volume; /* 0-0x40 */
     uint8_t audio_flags;
     uint8_t mute_button_led;
@@ -169,7 +170,7 @@ struct dualsense_output_report_common {
     uint8_t left_trigger_motor_mode;
     uint8_t left_trigger_param[10];
 
-    uint8_t reserved2[4];
+    uint32_t host_timestamp;
 
     uint8_t reduce_motor_power;
     uint8_t audio_flags2; /* 3 first bits: speaker pre-gain */
@@ -691,7 +692,7 @@ static int command_microphone(struct dualsense *ds, char *state)
 
     rp.common->valid_flag1 = DS_OUTPUT_VALID_FLAG1_POWER_SAVE_CONTROL_ENABLE;
     if (!strcmp(state, "on")) {
-        rp.common->power_save_control &= ~DS_OUTPUT_POWER_SAVE_CONTROL_MIC_MUTE;
+        rp.common->power_save_control &= ~DS_OUTPUT_POWER_SAVE_CONTROL_MIC_MUTE & ~DS_OUTPUT_POWER_SAVE_CONTROL_AUDIO;
     } else if (!strcmp(state, "off")) {
         rp.common->power_save_control |= DS_OUTPUT_POWER_SAVE_CONTROL_MIC_MUTE;
     } else {
@@ -750,6 +751,20 @@ static int command_microphone_mode(struct dualsense *ds, char *state)
     return 0;
 }
 
+static int command_microphone_volume(struct dualsense *ds, uint8_t volume)
+{
+    struct dualsense_output_report rp;
+    uint8_t rbuf[DS_OUTPUT_REPORT_BT_SIZE];
+    dualsense_init_output_report(ds, &rp, rbuf);
+
+    rp.common->valid_flag0 = DS_OUTPUT_VALID_FLAG0_MICROPHONE_VOLUME_ENABLE;
+    rp.common->internal_microphone_volume = volume;
+
+    dualsense_send_output_report(ds, &rp);
+
+    return 0;
+}
+
 static int command_speaker(struct dualsense *ds, char *state)
 {
     struct dualsense_output_report rp;
@@ -802,7 +817,7 @@ static int command_volume(struct dualsense *ds, uint8_t volume)
 
     /* if we want to set speaker pre gain */
     //rp.common->valid_flag1 = DS_OUTPUT_VALID_FLAG1_AUDIO_CONTROL2_ENABLE;
-    //rp.common->audio_flags2 = 4;
+    //rp.common->audio_flags2 = (3 << DS_OUTPUT_AUDIO2_SPEAKER_PREGAIN_SHIFT);
 
     dualsense_send_output_report(ds, &rp);
 
@@ -1247,6 +1262,7 @@ static void print_help(void)
     printf("  microphone STATE                         Enable (on) or disable (off) microphone\n");
     printf("  microphone-led STATE                     Enable (on), disable (off) or pulsate (pulse) microphone LED\n");
     printf("  microphone-mode STATE                    Toggle microphone usage to 'chat', 'asr' or 'both'\n");
+    printf("  microphone-volume VOLUME                 Set microphone volume (0-255)\n");
     printf("  speaker STATE                            Toggle to 'internal' speaker, 'headphone' or 'both'\n");
     printf("  volume VOLUME                            Set audio volume (0-255) of internal speaker and headphone\n");
     printf("  attenuation RUMBLE TRIGGER               Set the attenuation (0-7) of rumble/haptic motors and trigger vibration\n");
@@ -1407,6 +1423,16 @@ int main(int argc, char *argv[])
             return 2;
         }
         return command_microphone_mode(&ds, argv[2]);
+    } else if (!strcmp(argv[1], "microphone-volume")) {
+        if (argc != 3) {
+            fprintf(stderr, "Invalid arguments\n");
+            return 2;
+        }
+        if (atoi_x(argv[2]) > 255) {
+            fprintf(stderr, "Invalid volume\n");
+            return 1;
+        }
+        return command_microphone_volume(&ds, atoi_x(argv[2]));
     } else if (!strcmp(argv[1], "speaker")) {
         if (argc != 3) {
             fprintf(stderr, "Invalid arguments\n");
