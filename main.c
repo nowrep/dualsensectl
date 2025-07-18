@@ -17,7 +17,6 @@
 #include <poll.h>
 #include <sys/wait.h>
 
-#include <dbus/dbus.h>
 #include <hidapi/hidapi.h>
 #include <libudev.h>
 
@@ -30,7 +29,7 @@
 /* Seed values for DualShock4 / DualSense CRC32 for different report types. */
 #define PS_INPUT_CRC32_SEED 0xA1
 #define PS_OUTPUT_CRC32_SEED 0xA2
-#define PS_FEATURE_CRC32_SEED 0xA3
+#define PS_FEATURE_CRC32_SEED 0x53
 
 #define DS_INPUT_REPORT_USB 0x01
 #define DS_INPUT_REPORT_USB_SIZE 64
@@ -43,6 +42,8 @@
 
 #define DS_FEATURE_REPORT_CALIBRATION 0x05
 #define DS_FEATURE_REPORT_CALIBRATION_SIZE 41
+#define DS_FEATURE_REPORT_BLUETOOTH_CONTROL 0x08
+#define DS_FEATURE_REPORT_BLUETOOTH_CONTROL_SIZE 47
 #define DS_FEATURE_REPORT_PAIRING_INFO 0x09
 #define DS_FEATURE_REPORT_PAIRING_INFO_SIZE 20
 #define DS_FEATURE_REPORT_FIRMWARE_INFO 0x20
@@ -50,6 +51,10 @@
 
 /* Magic value required in tag field of Bluetooth output report. */
 #define DS_OUTPUT_TAG 0x10
+
+#define DS_BLUETOOTN_CONTROL_ON 1
+#define DS_BLUETOOTN_CONTROL_OFF 2
+
 /* Flags for DualSense output report. */
 #define BIT(n) (1 << n)
 #define DS_OUTPUT_VALID_FLAG0_COMPATIBLE_VIBRATION BIT(0)
@@ -388,7 +393,7 @@ static bool dualsense_init(struct dualsense *ds, const char *serial)
 
     if (wcslen(serial_number) != 17) {
         fprintf(stderr, "Invalid device serial number: %ls\n", serial_number);
-        // Let's just fake serial number as everything except disconnecting will still work
+        // Let's just fake serial number as everything will still work
         serial_number = L"00:00:00:00:00:00";
     }
 
@@ -416,91 +421,29 @@ static void dualsense_destroy(struct dualsense *ds)
     hid_close(ds->dev);
 }
 
-static bool dualsense_bt_disconnect(struct dualsense *ds)
-{
-    DBusError err;
-    dbus_error_init(&err);
-    DBusConnection *conn = dbus_bus_get(DBUS_BUS_SYSTEM, &err);
-    if (dbus_error_is_set(&err)) {
-        fprintf(stderr, "Failed to connect to DBus daemon: %s %s\n", err.name, err.message);
-        return false;
-    }
-    DBusMessage *msg = dbus_message_new_method_call("org.bluez", "/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects");
-    DBusMessage *reply = dbus_connection_send_with_reply_and_block(conn, msg, -1, &err);
-    dbus_message_unref(msg);
-    if (dbus_error_is_set(&err)) {
-        fprintf(stderr, "Failed to enumerate BT devices: %s %s\n", err.name, err.message);
-        return false;
-    }
-    DBusMessageIter dict;
-    dbus_message_iter_init(reply, &dict);
-    int objects_count = dbus_message_iter_get_element_count(&dict);
-    DBusMessageIter dict_entry;
-    dbus_message_iter_recurse(&dict, &dict_entry);
-    DBusMessageIter dict_kv;
-    char *ds_path = NULL;
-    char *path, *iface, *prop;
-    while (objects_count-- && !ds_path) {
-        dbus_message_iter_recurse(&dict_entry, &dict_kv);
-        dbus_message_iter_get_basic(&dict_kv, &path);
-        dbus_message_iter_next(&dict_kv);
-        int ifaces_count = dbus_message_iter_get_element_count(&dict_kv);
-        DBusMessageIter ifacedict_entry, ifacedict_kv;
-        dbus_message_iter_recurse(&dict_kv, &ifacedict_entry);
-        while (ifaces_count-- && !ds_path) {
-            dbus_message_iter_recurse(&ifacedict_entry, &ifacedict_kv);
-            dbus_message_iter_get_basic(&ifacedict_kv, &iface);
-            if (!strcmp(iface, "org.bluez.Device1")) {
-                dbus_message_iter_next(&ifacedict_kv);
-                int props_count = dbus_message_iter_get_element_count(&ifacedict_kv);
-                DBusMessageIter propdict_entry, propdict_kv;
-                dbus_message_iter_recurse(&ifacedict_kv, &propdict_entry);
-                while (props_count-- && !ds_path) {
-                    dbus_message_iter_recurse(&propdict_entry, &propdict_kv);
-                    dbus_message_iter_get_basic(&propdict_kv, &prop);
-                    DBusMessageIter variant;
-                    if (!strcmp(prop, "Address")) {
-                        dbus_message_iter_next(&propdict_kv);
-                        dbus_message_iter_recurse(&propdict_kv, &variant);
-                        char *address = NULL;
-                        dbus_message_iter_get_basic(&variant, &address);
-                        if (!strcmp(address, ds->mac_address) && !ds_path) {
-                            ds_path = path;
-                        }
-                    }
-                    dbus_message_iter_next(&propdict_entry);
-                }
-            }
-            dbus_message_iter_next(&ifacedict_entry);
-        }
-        dbus_message_iter_next(&dict_entry);
-    }
-    dbus_message_unref(reply);
-    if (!ds_path) {
-        fprintf(stderr, "Failed to find BT device\n");
-        return false;
-    }
-    msg = dbus_message_new_method_call("org.bluez", ds_path, "org.bluez.Device1", "Disconnect");
-    reply = dbus_connection_send_with_reply_and_block(conn, msg, -1, &err);
-    dbus_message_unref(msg);
-    if (dbus_error_is_set(&err)) {
-        fprintf(stderr, "Failed to disconnect BT device: %s %s\n", err.name, err.message);
-        return false;
-    }
-    dbus_message_unref(reply);
-    dbus_connection_unref(conn);
-    return true;
-}
-
 static int command_power_off(struct dualsense *ds)
 {
-    if (!ds->bt) {
-        fprintf(stderr, "Controller is not connected via BT\n");
-        return 1;
+    uint8_t buf[DS_FEATURE_REPORT_BLUETOOTH_CONTROL_SIZE];
+    memset(buf, 0, sizeof(buf));
+    buf[0] = DS_FEATURE_REPORT_BLUETOOTH_CONTROL;
+    buf[1] = DS_BLUETOOTN_CONTROL_OFF;
+
+    if (ds->bt) {
+        uint32_t crc;
+        uint8_t seed = PS_FEATURE_CRC32_SEED;
+
+        crc = crc32_le(0xFFFFFFFF, &seed, 1);
+        crc = ~crc32_le(crc, buf, sizeof(buf) - 4);
+
+        *(uint32_t*)(buf + sizeof(buf) - sizeof(crc)) = crc;
     }
-    if (!dualsense_bt_disconnect(ds)) {
+
+    int res = hid_send_feature_report(ds->dev, buf, sizeof(buf));
+    if (res != sizeof(buf)) {
+        fprintf(stderr, "Invalid feature report\n");
         return 2;
     }
+
     return 0;
 }
 
