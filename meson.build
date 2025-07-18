@@ -19,12 +19,11 @@ add_project_arguments(
   )
 
 udev = dependency('libudev')
-dbus = dependency('dbus-1')
 hidapi_hidraw = dependency('hidapi-hidraw')
 
 executable(
   'dualsensectl',
   ['main.c'],
-  dependencies: [udev, dbus, hidapi_hidraw],
+  dependencies: [udev, hidapi_hidraw],
   install: true,
   )

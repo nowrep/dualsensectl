@@ -41,7 +41,6 @@ AUR: [dualsensectl-git](https://aur.archlinux.org/packages/dualsensectl-git/)
 
 * meson
 * libhidapi-hidraw
-* libdbus-1
 * libudev
 
 ### Building
