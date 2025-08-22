@@ -22,6 +22,9 @@
 
 #include "crc32.h"
 
+#define MIN(a, b)	((a)<(b)?(a):(b))
+#define YESNO(x)	((x)?"Yes":"No")
+
 #define DS_VENDOR_ID 0x054c
 #define DS_PRODUCT_ID 0x0ce6
 #define DS_EDGE_PRODUCT_ID 0x0df2
@@ -106,11 +109,6 @@
 /* haptics flags */
 #define DS_OUTPUT_HAPTICS_FLAG_LOW_PASS_FILTER BIT(0)
 
-/* Status field of DualSense input report. */
-#define DS_STATUS_BATTERY_CAPACITY 0xF
-#define DS_STATUS_CHARGING 0xF0
-#define DS_STATUS_CHARGING_SHIFT 4
-
 #define DS_TRIGGER_EFFECT_OFF 0x05
 #define DS_TRIGGER_EFFECT_FEEDBACK 0x21
 #define DS_TRIGGER_EFFECT_BOW 0x22
@@ -122,7 +120,8 @@
 struct dualsense_touch_point {
     uint8_t contact;
     uint8_t x_lo;
-    uint8_t x_hi:4, y_lo:4;
+    uint8_t x_hi :4,
+            y_lo :4;
     uint8_t y_hi;
 } __attribute__((packed));
 
@@ -139,14 +138,30 @@ struct dualsense_input_report {
     uint16_t gyro[3]; /* x, y, z */
     uint16_t accel[3]; /* x, y, z */
     uint32_t sensor_timestamp;
-    uint8_t reserved2;
+    int8_t temperature;
 
     /* Touchpad */
     struct dualsense_touch_point points[2];
 
     uint8_t reserved3[12];
-    uint8_t status;
-    uint8_t reserved4[10];
+
+    uint8_t battery_level :4;
+    uint8_t power_state :4;
+
+    bool headphones_plugged :1,
+         mic_plugged :1,
+         mic_muted :1,
+         usb_data_plugged :1,
+         usb_power_plugged :1,
+         usb_power_bt :1,
+         docked :1,
+         unk_plugged :1;
+
+    bool external_mic_active :1,
+         haptic_low_pass_active :1;
+    uint8_t unk :6;
+
+    uint8_t aes_cmac[8];
 } __attribute__((packed));
 
 /* Common data between DualSense BT/USB main output report. */
@@ -195,8 +210,8 @@ _Static_assert(sizeof(struct dualsense_output_report_common) == 47, "Bad output 
 
 struct dualsense_output_report_bt {
     uint8_t report_id; /* 0x31 */
-    uint8_t flags:4;
-    uint8_t seq_tag:4;
+    uint8_t flags :4;
+    uint8_t seq_tag :4;
     uint8_t tag;
     union {
         struct dualsense_output_report_common common;
@@ -448,6 +463,46 @@ static int command_power_off(struct dualsense *ds)
     return 0;
 }
 
+static int command_status(struct dualsense *ds)
+{
+    uint8_t data[DS_INPUT_REPORT_BT_SIZE];
+    int res = hid_read_timeout(ds->dev, data, sizeof(data), 1000);
+    if (res <= 0) {
+        if (res == 0) {
+            fprintf(stderr, "Timeout waiting for report\n");
+        } else {
+            fprintf(stderr, "Failed to read report %ls\n", hid_error(ds->dev));
+        }
+        return 2;
+    }
+
+    struct dualsense_input_report *ds_report;
+
+    if (!ds->bt && data[0] == DS_INPUT_REPORT_USB && res == DS_INPUT_REPORT_USB_SIZE) {
+        ds_report = (struct dualsense_input_report *)&data[1];
+    } else if (ds->bt && data[0] == DS_INPUT_REPORT_BT && res == DS_INPUT_REPORT_BT_SIZE) {
+        /* Last 4 bytes of input report contain crc32 */
+        /* uint32_t report_crc = *(uint32_t*)&data[res - 4]; */
+        ds_report = (struct dualsense_input_report *)&data[2];
+    } else {
+        fprintf(stderr, "Unhandled report ID %d\n", (int)data[0]);
+        return 3;
+    }
+
+    printf("Temperature: %+d °C\n", ds_report->temperature << 1);
+    printf("USB Power plugged: %s\n", YESNO(ds_report->usb_power_plugged));
+    printf("USB Data plugged: %s\n", YESNO(ds_report->usb_data_plugged));
+    printf("USB plugged on BT: %s\n", YESNO(ds_report->usb_power_bt));
+    printf("Docked: %s\n", YESNO(ds_report->docked));
+    printf("Headset plugged: %s\n", YESNO(ds_report->headphones_plugged));
+    printf("Mic plugged: %s\n", YESNO(ds_report->mic_plugged));
+    printf("Mic muted: %s\n", YESNO(ds_report->mic_muted));
+    printf("External mic active: %s\n", YESNO(ds_report->external_mic_active));
+    printf("Haptic LP filter active: %s\n", YESNO(ds_report->haptic_low_pass_active));
+
+    return 0;
+}
+
 static int command_battery(struct dualsense *ds)
 {
     uint8_t data[DS_INPUT_REPORT_BT_SIZE];
@@ -474,23 +529,20 @@ static int command_battery(struct dualsense *ds)
         return 3;
     }
 
-    const char *battery_status;
     uint8_t battery_capacity;
-    uint8_t battery_data = ds_report->status & DS_STATUS_BATTERY_CAPACITY;
-    uint8_t charging_status = (ds_report->status & DS_STATUS_CHARGING) >> DS_STATUS_CHARGING_SHIFT;
+    const char *battery_status;
 
-#define min(a, b) ((a) < (b) ? (a) : (b))
-    switch (charging_status) {
+    switch (ds_report->power_state) {
     case 0x0:
         /*
          * Each unit of battery data corresponds to 10%
          * 0 = 0-9%, 1 = 10-19%, .. and 10 = 100%
          */
-        battery_capacity = min(battery_data * 10 + 5, 100);
+        battery_capacity = MIN(ds_report->battery_level * 10 + 5, 100);
         battery_status = "discharging";
         break;
     case 0x1:
-        battery_capacity = min(battery_data * 10 + 5, 100);
+        battery_capacity = MIN(ds_report->battery_level * 10 + 5, 100);
         battery_status = "charging";
         break;
     case 0x2:
@@ -507,9 +559,8 @@ static int command_battery(struct dualsense *ds)
         battery_capacity = 0;
         battery_status = "unknown";
     }
-#undef min
 
-    printf("%d %s\n", (int)battery_capacity, battery_status);
+    printf("Battery: %d%%, %s\n", (int)battery_capacity, battery_status);
     return 0;
 }
 
@@ -1196,6 +1247,7 @@ static void print_help(void)
     printf("  -v --version                             Show version\n");
     printf("Commands:\n");
     printf("  power-off                                Turn off the controller (BT only)\n");
+    printf("  status                                   Get the controller status\n");
     printf("  battery                                  Get the controller battery level\n");
     printf("  info                                     Get the controller firmware info\n");
     printf("  lightbar STATE                           Enable (on) or disable (off) lightbar\n");
@@ -1317,6 +1369,8 @@ int main(int argc, char *argv[])
 
     if (!strcmp(argv[1], "power-off")) {
         return command_power_off(&ds);
+    } else if (!strcmp(argv[1], "status")) {
+        return command_status(&ds);
     } else if (!strcmp(argv[1], "battery")) {
         return command_battery(&ds);
     } else if (!strcmp(argv[1], "info")) {
