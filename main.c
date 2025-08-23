@@ -1105,13 +1105,21 @@ static bool check_dualsense_device(struct udev_device *dev, char serial_number[1
     strcpy(baseend, "id/vendor");
     uint32_t vendor = read_file_hex(idpath);
 
+    if (vendor != DS_VENDOR_ID) {
+        return false;
+    }
+
     strcpy(baseend, "id/product");
     uint32_t product = read_file_hex(idpath);
+
+    if (product != DS_PRODUCT_ID && product != DS_EDGE_PRODUCT_ID) {
+        return false;
+    }
 
     strcpy(baseend, "uniq");
     read_file_str(idpath, serial_number, 18);
 
-    return vendor == DS_VENDOR_ID && (product == DS_PRODUCT_ID || product == DS_EDGE_PRODUCT_ID);
+    return true;
 }
 
 static void add_device(struct udev_device *dev)
