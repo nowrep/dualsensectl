@@ -1220,7 +1220,7 @@ static void print_help(void)
                                            Emulate a galloping\n");
     printf("  trigger TRIGGER machine START STOP STRENGTH_A STRENGTH_B FREQUENCY PERIOD\n\
                                            Switch vibration between to strength at a specified period\n");
-    printf("  trigger TRIGGER vibration POSITION AMPLITUDE FREQUENCY \n\
+    printf("  trigger TRIGGER vibration POSITION AMPLITUDE FREQUENCY\n\
                                            Vibrates motor arm around specified position\n");
     printf("  trigger TRIGGER feedback-raw STRENGTH[10]\n\
                                            set a resistance starting using array of strength\n");
