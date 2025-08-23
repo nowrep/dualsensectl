@@ -52,8 +52,8 @@
 /* Magic value required in tag field of Bluetooth output report. */
 #define DS_OUTPUT_TAG 0x10
 
-#define DS_BLUETOOTN_CONTROL_ON 1
-#define DS_BLUETOOTN_CONTROL_OFF 2
+#define DS_BLUETOOTH_CONTROL_ON 1
+#define DS_BLUETOOTH_CONTROL_OFF 2
 
 /* Flags for DualSense output report. */
 #define BIT(n) (1 << n)
@@ -427,7 +427,7 @@ static int command_power_off(struct dualsense *ds)
     uint8_t buf[DS_FEATURE_REPORT_BLUETOOTH_CONTROL_SIZE];
     memset(buf, 0, sizeof(buf));
     buf[0] = DS_FEATURE_REPORT_BLUETOOTH_CONTROL;
-    buf[1] = DS_BLUETOOTN_CONTROL_OFF;
+    buf[1] = DS_BLUETOOTH_CONTROL_OFF;
 
     if (ds->bt) {
         uint32_t crc;
