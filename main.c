@@ -1397,7 +1397,7 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Invalid arguments\n");
             return 2;
         }
-        if ((atoi_x(argv[2]) > 7) | (atoi_x(argv[3]) > 7)) {
+        if (atoi_x(argv[2]) > 7 || atoi_x(argv[3]) > 7) {
             fprintf(stderr, "Invalid attenuation\n");
             return 1;
         }
