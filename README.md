@@ -46,6 +46,8 @@ Linux tool for controlling Sony PlayStation 5 DualSense controller.
       monitor [add COMMAND] [remove COMMAND]   Run shell command COMMAND on add/remove events
 
 
+`monitor` command sets `$DS_DEV` environment variable which can be used to identify the controller that triggered the event.
+
 AUR: [dualsensectl-git](https://aur.archlinux.org/packages/dualsensectl-git/)
 
 ### Dependencies
