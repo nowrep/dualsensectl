@@ -16,6 +16,8 @@ Linux tool for controlling Sony PlayStation 5 DualSense controller.
       info                                     Get the controller firmware info
       lightbar STATE                           Enable (on) or disable (off) lightbar
       lightbar RED GREEN BLUE [BRIGHTNESS]     Set lightbar color and brightness (0-255)
+      lightbar rainbow enable                  Enable lightbar rainbow mode
+      lightbar rainbow disable                 Disable lightbar rainbow mode
       led-brightness NUMBER                    Set player and microphone LED dimming (0-2)
       player-leds NUMBER [instant]             Set player LEDs (1-7) or disabled (0)
       microphone STATE                         Enable (on) or disable (off) microphone
