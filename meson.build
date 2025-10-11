@@ -21,9 +21,12 @@ add_project_arguments(
 udev = dependency('libudev')
 hidapi_hidraw = dependency('hidapi-hidraw')
 
+cc = meson.get_compiler('c')
+m_dep = cc.find_library('m', required : false)
+
 executable(
   'dualsensectl',
   ['main.c'],
-  dependencies: [udev, hidapi_hidraw],
+  dependencies: [udev, hidapi_hidraw, m_dep],
   install: true,
   )

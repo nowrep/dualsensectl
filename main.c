@@ -17,6 +17,9 @@
 #include <poll.h>
 #include <sys/wait.h>
 
+#include <time.h>
+#include <math.h>
+
 #include <hidapi/hidapi.h>
 #include <libudev.h>
 
@@ -575,6 +578,56 @@ static int command_lightbar3(struct dualsense *ds, uint8_t red, uint8_t green, u
 
     dualsense_send_output_report(ds, &rp);
 
+    return 0;
+}
+
+static int command_lightbar_rainbow_enable(struct dualsense *ds)
+{
+    struct dualsense_output_report rp;
+    uint8_t rbuf[DS_OUTPUT_REPORT_BT_SIZE];
+    dualsense_init_output_report(ds, &rp, rbuf);
+
+    pid_t pid = fork();
+
+    if (pid == -1) {
+        perror("fork failed :(");
+        exit(1);
+    } else if (pid == 0) {
+        FILE *fp = fopen("child.pid", "w");
+        if (fp) {
+            fprintf(fp, "%d", getpid());
+            fclose(fp);
+        }
+        struct timespec req = {
+            .tv_sec = 0,
+            .tv_nsec = 200000000,
+        };
+        struct timespec rem;
+        double timer = 0;
+        while (true) {
+            rp.common->valid_flag1 = DS_OUTPUT_VALID_FLAG1_LIGHTBAR_CONTROL_ENABLE;
+            rp.common->lightbar_red = 128 + (uint8_t)(128 * sin(3 * timer));
+            rp.common->lightbar_green = 128 + (uint8_t)(128 * cos(5 * timer));
+            rp.common->lightbar_blue = 128 + (uint8_t)(128 * sin(10 * timer));
+            nanosleep(&req, &rem);
+            dualsense_send_output_report(ds, &rp);
+            timer += 0.03;
+        }
+        exit(0);
+    }
+    return 0;
+}
+
+static int command_lightbar_rainbow_disable()
+{
+    FILE *fp = fopen("child.pid", "r");
+    if (fp) {
+        pid_t pid;
+        fscanf(fp, "%d", &pid);
+        kill(pid, SIGTERM);
+        fclose(fp);
+    }
+    
     return 0;
 }
 
@@ -1335,6 +1388,15 @@ int main(int argc, char *argv[])
         } else if (argc == 5 || argc == 6) {
             uint8_t brightness = argc == 6 ? atoi_x(argv[5]) : 255;
             return command_lightbar3(&ds, atoi_x(argv[2]), atoi_x(argv[3]), atoi_x(argv[4]), brightness);
+        } else if (argc == 4) {
+            if (!strcmp(argv[3], "enable")) {
+                return command_lightbar_rainbow_enable(&ds);
+            } else if (!strcmp(argv[3], "disable")) {
+                return command_lightbar_rainbow_disable();
+            } else {
+                fprintf(stderr, "Invalid arguments\n");
+                return 2;
+            }
         } else {
             fprintf(stderr, "Invalid arguments\n");
             return 2;
