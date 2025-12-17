@@ -17,6 +17,8 @@
 #include <poll.h>
 #include <sys/wait.h>
 
+#include <threads.h>
+
 #include <hidapi/hidapi.h>
 #include <libudev.h>
 
@@ -118,6 +120,12 @@
 #define DS_TRIGGER_EFFECT_WEAPON 0x25
 #define DS_TRIGGER_EFFECT_VIBRATION 0x26
 #define DS_TRIGGER_EFFECT_MACHINE 0x27
+
+/* firmware update */
+#define DS_FEATURE_REPORT_FW 0xF4
+#define DS_FEATURE_REPORT_FW_STATUS 0xF5
+#define DS_FIRMWARE_SIZE 950272
+#define DS_BATTERY_THRESHOLD 10
 
 struct dualsense_touch_point {
     uint8_t contact;
@@ -265,6 +273,7 @@ struct dualsense {
     hid_device *dev;
     char mac_address[18];
     uint8_t output_seq;
+    uint16_t product_id;
 };
 
 static int atoi_x(const char *s)
@@ -407,6 +416,7 @@ static bool dualsense_init(struct dualsense *ds, const char *serial)
     }
 
     ds->bt = dev->interface_number == -1;
+    ds->product_id = dev->product_id;
 
     ret = true;
 
@@ -1192,6 +1202,344 @@ static int command_monitor(void)
     return 0;
 }
 
+static int dualsense_send_fw_feature(struct dualsense *ds, uint8_t *buf)
+{
+	if (ds->bt) {
+		fprintf(stderr, "Update via Bluetooth is not supported.\n");
+		fprintf(stderr, "Please connect to USB.\n");
+		return -1;
+	}
+	
+	int res = hid_send_feature_report(ds->dev, buf, DS_INPUT_REPORT_USB_SIZE);
+	if (res != DS_INPUT_REPORT_USB_SIZE){
+		fprintf(stderr, "FW feature report failed: sent %d of %d\n", res, DS_INPUT_REPORT_USB_SIZE);
+		return -1;
+	}
+	return 0;
+}
+
+static uint8_t *load_fw(const char *path, size_t *size)
+{
+	FILE *f = fopen(path, "rb");
+	if(!f)
+		return NULL;
+	
+	fseek(f, 0, SEEK_END);
+	*size = ftell(f);
+	rewind(f);
+	
+	uint8_t *buf = malloc(*size);
+	if(!buf){
+		fclose(f);
+		return NULL;
+	}
+
+	if(fread(buf, 1, *size, f) != *size){
+		free(buf);
+		fclose(f);
+		return NULL;
+	}
+
+	fclose(f);
+	return buf;
+}
+
+static int dualsense_fw_wait_status(struct dualsense *ds, uint8_t expected)
+{
+	struct timespec ts = {
+		.tv_sec = 0,
+		.tv_nsec = 10 * 1000 * 1000 // 10ms
+	};
+
+	uint8_t buf[DS_INPUT_REPORT_USB_SIZE];
+	while(1){
+		memset(buf, 0, sizeof(buf));
+		buf[0] = DS_FEATURE_REPORT_FW_STATUS;
+
+		int res = hid_get_feature_report(ds->dev, buf, sizeof(buf));
+
+		if(res < 0)
+			return -1;
+
+		uint8_t phase = buf[1];
+		uint8_t status = buf[2];
+
+		if(phase != expected)
+			return -1;
+
+		switch (status) {
+			case 0x00: return 0;
+			case 0x01:
+				thrd_sleep(&ts, NULL);
+				break;
+			case 0x02:
+				fprintf(stderr, "Error: invalid firmware size\n");
+				return -2;
+			case 0x03:
+				if(expected == 0x01)
+					return 0;
+				
+				fprintf(stderr, "Error: invalid firmware binary\n");
+				return -3;
+			case 0x04:
+				if(expected == 0x0 || expected == 0x02){
+					sleep(10);
+					break;
+				}
+				fprintf(stderr, "Error: invalid firmware binary\n");
+				return -4;
+			case 0x10: 
+				thrd_sleep(&ts, NULL);
+				break;
+			case 0x11:
+				fprintf(stderr, "Error: invalid firmware binary\n");
+				return -0x11;
+			case 0xFF:
+				fprintf(stderr, "Error: Internal firmware error\n");
+				return -0xFF;
+			default: 
+				fprintf(stderr, "Error: Unknown firmware error\n");
+				return -1;
+		}
+	}
+}
+
+static int dualsense_fw_start(struct dualsense *ds, uint8_t *fw)
+{	
+	printf("Checking firmware header...\n");
+	struct timespec ts = {
+		.tv_nsec = 50 * 1000 * 1000 // 50ms
+	};
+
+	uint8_t buf[DS_INPUT_REPORT_USB_SIZE];
+	
+	for(int offset = 0; offset < 256; offset += 57){
+
+		uint32_t remaining = 256 - offset; 
+		uint32_t chunk_size = (remaining < 57) ? remaining : 57;
+
+		memset(buf, 0, sizeof(buf));
+		buf[0] = DS_FEATURE_REPORT_FW;
+		buf[2] = chunk_size;
+		memcpy(buf + 3, fw + offset, chunk_size);
+
+		if(dualsense_send_fw_feature(ds, buf)){
+			fprintf(stderr, "Failed to send chunk at offset %d\n", offset);
+			return -1;
+		}
+
+		if(offset == 0)
+			thrd_sleep(&ts, NULL);	
+	}
+
+	return dualsense_fw_wait_status(ds, 0x0);
+}
+
+static int dualsense_fw_write(struct dualsense *ds, uint8_t *fw, size_t size)
+{
+	struct timespec ts = {
+		.tv_nsec = 10 * 1000 * 1000
+	};
+
+	uint8_t buf[DS_INPUT_REPORT_USB_SIZE];
+
+	for(size_t offset = 0; offset < size; offset += 0x8000){
+		for(size_t chunk_offset = 0; chunk_offset < 0x8000; chunk_offset += 57) {
+
+			uint32_t remaining = 0x8000 - chunk_offset;
+			uint32_t packet_size = (remaining < 57) ? remaining : 57;
+
+			memset(buf, 0, sizeof(buf));
+			buf[0] = DS_FEATURE_REPORT_FW;
+			buf[1] = 0x01;
+			buf[2] = packet_size;	
+			memcpy(buf + 3, fw + offset + chunk_offset, packet_size);
+
+			if(dualsense_send_fw_feature(ds, buf))
+				return -1;
+
+			if(dualsense_fw_wait_status(ds, 0x01))
+				return -1;
+
+			thrd_sleep(&ts, NULL);
+
+			int32_t progress = (offset + chunk_offset - 256) * 100 / (size - 256);
+			if(progress > 100) progress = 100;
+			if(progress < 0) progress = 0;
+
+			printf("\rWriting firmware: %3d%% ", progress);
+			fflush(stdout);
+		}
+	}
+	
+	printf("\rWriting firmware: 100%% Done!\n");
+	return 0;
+}
+
+static int dualsense_fw_verify(struct dualsense *ds)
+{
+	printf("Verifying firmware...\n");
+
+	uint8_t buf[DS_INPUT_REPORT_USB_SIZE] = {0};
+	buf[0] = DS_FEATURE_REPORT_FW;
+	buf[1] = 0x02;
+
+	if(dualsense_send_fw_feature(ds, buf)){
+		return -1;
+	}
+
+	return dualsense_fw_wait_status(ds, 0x02);
+}
+
+static int dualsense_fw_finalize(struct dualsense *ds)
+{
+	printf("Last steps...\n");
+	uint8_t buf[DS_INPUT_REPORT_USB_SIZE] = {0};
+	buf[0] = DS_FEATURE_REPORT_FW;
+	buf[1] = 0x03;
+
+	return dualsense_send_fw_feature(ds, buf);
+}
+
+static int dualsense_check_fw_compat(struct dualsense *ds, uint8_t *fw, size_t fw_size)
+{
+	if(fw_size < 0x80){
+		return -1;
+	}
+
+	uint16_t pid = fw[0x62] | (fw[0x63] << 8);
+	uint16_t version = fw[0x78] | (fw[0x79] << 8);
+
+	if(pid != ds->product_id) {
+		fprintf(stderr, "Firmware incompatible.\nFirmware device: 0x%04X\nConnected device: 0x%04X\n", pid, ds->product_id);
+		return -1;
+	}
+
+	uint8_t buf[DS_FEATURE_REPORT_FIRMWARE_INFO_SIZE];
+	memset(buf, 0, sizeof(buf));
+	buf[0] = DS_FEATURE_REPORT_FIRMWARE_INFO;
+	int res = hid_get_feature_report(ds->dev, buf, sizeof(buf));
+	if (res != sizeof(buf)) {
+		fprintf(stderr, "Invalid feature report\n");
+		return false;
+	}
+
+	struct dualsense_feature_report_firmware *ds_report;
+	ds_report = (struct dualsense_feature_report_firmware *)&buf;
+
+	printf("Updating firmware for %s\n",
+		(ds->product_id == DS_PRODUCT_ID ? "DualSense" : "DualSense Edge"));
+	printf("Firmware version change: %04x -> %04x\n", ds_report->update_version, version);
+	return 0;
+}
+
+static int command_update(struct dualsense *ds, const char *path)
+{
+	if (ds->bt) {
+		fprintf(stderr, "Update via Bluetooth is not supported.\n");
+		fprintf(stderr, "Please connect to USB.\n");
+		return 1;
+	}
+
+	uint8_t data[DS_INPUT_REPORT_BT_SIZE];
+	int res = hid_read_timeout(ds->dev, data, sizeof(data), 1000);
+	if (res <= 0) {
+		if (res == 0) {
+			fprintf(stderr, "Timeout waiting for report\n");
+		} else {
+			fprintf(stderr, "Failed to read report %ls\n", hid_error(ds->dev));
+		}
+		return 2;
+	}
+
+	struct dualsense_input_report *ds_report;
+
+	if (data[0] == DS_INPUT_REPORT_USB && res == DS_INPUT_REPORT_USB_SIZE) {
+		ds_report = (struct dualsense_input_report *)&data[1];
+	} else {
+		fprintf(stderr, "Unhandled report ID %d\n", (int)data[0]);
+		return 3;
+	}
+
+	uint8_t battery_capacity;
+	uint8_t battery_data = ds_report->status & DS_STATUS_BATTERY_CAPACITY;
+	uint8_t charging_status = (ds_report->status & DS_STATUS_CHARGING) >> DS_STATUS_CHARGING_SHIFT;
+
+#define min(a, b) ((a) < (b) ? (a) : (b))
+	switch (charging_status) {
+		case 0x0:
+			/*
+	 * Each unit of battery data corresponds to 10%
+	 * 0 = 0-9%, 1 = 10-19%, .. and 10 = 100%
+	 */
+			battery_capacity = min(battery_data * 10 + 5, 100);
+			break;
+		case 0x1:
+			battery_capacity = min(battery_data * 10 + 5, 100);
+			break;
+		case 0x2:
+			battery_capacity = 100;
+			break;
+		case 0xa: /* voltage or temperature out of range */
+		case 0xb: /* temperature error */
+			battery_capacity = 0;
+			break;
+		case 0xf: /* charging error */
+		default:
+			battery_capacity = 0;
+	}
+	#undef min
+
+	if(battery_capacity < DS_BATTERY_THRESHOLD){
+		fprintf(stderr, "Battery is low, please charge controller to at least 10%%\n");
+		return 1;
+	}
+
+	size_t fw_size;
+	uint8_t *fw = load_fw(path, &fw_size);
+	if(!fw){
+		fprintf(stderr, "Failed to load firmware\n");
+		return 1;
+	}
+
+	if(fw_size != DS_FIRMWARE_SIZE){
+		fprintf(stderr, "Invalid firmware size\n");
+		return 1;
+	}
+	if(dualsense_check_fw_compat(ds, fw, fw_size)) {
+		free(fw);
+		return 1;
+	}
+
+	if(dualsense_fw_start(ds, fw)) {
+		fprintf(stderr, "Failed to start update\n");
+		free(fw);
+		return 1;
+	}
+
+	if(dualsense_fw_write(ds, fw, fw_size)){
+		fprintf(stderr, "Failed to write firmware\n");
+		free(fw);
+		return 1;
+	}
+
+	if(dualsense_fw_verify(ds)) {
+		fprintf(stderr, "Failed to verify firmware\n");
+		free(fw);
+		return 1;
+	}
+
+	if(dualsense_fw_finalize(ds)){
+		fprintf(stderr, "Failed to finalize update\n");
+		free(fw);
+		return 1;
+	}
+
+	printf("Update complete, please reconnect controller.\n");
+	free(fw);
+	return 0;
+}
+
 static void print_help(void)
 {
     printf("Usage: dualsensectl [options] command [ARGS]\n");
@@ -1236,6 +1584,7 @@ static void print_help(void)
                                            Vibrates motor arm at position and strength specified by an array of amplitude\n");
     printf("  trigger TRIGGER MODE [PARAMS]            set the trigger (left, right or both) mode with parameters (up to 9)\n");
     printf("  monitor [add COMMAND] [remove COMMAND]   Run shell command COMMAND on add/remove events\n");
+    printf("  update FILE   		   Update controller firmware\n");
 }
 
 static void print_version(void)
@@ -1485,6 +1834,12 @@ int main(int argc, char *argv[])
         uint8_t param9 = argc > 12 ? atoi_x(argv[12]) : 0;
 
         return command_trigger(&ds, argv[2], atoi_x(argv[3]), param1, param2, param3, param4, param5, param6, param7, param8, param9);
+    } else if (!strcmp(argv[1], "update")) {
+	if(argc != 3) {
+		fprintf(stderr, "update requires firmware file\n");
+		return 2;
+	}
+	return command_update(&ds, argv[2]);
     } else {
         fprintf(stderr, "Invalid command\n");
         return 2;
