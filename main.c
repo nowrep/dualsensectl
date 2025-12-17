@@ -1584,7 +1584,7 @@ static void print_help(void)
                                            Vibrates motor arm at position and strength specified by an array of amplitude\n");
     printf("  trigger TRIGGER MODE [PARAMS]            set the trigger (left, right or both) mode with parameters (up to 9)\n");
     printf("  monitor [add COMMAND] [remove COMMAND]   Run shell command COMMAND on add/remove events\n");
-    printf("  update FILE   		   Update controller firmware\n");
+    printf("  update FILE                              Update controller firmware\n");
 }
 
 static void print_version(void)
