@@ -337,7 +337,7 @@ static bool compare_serial(const char *s, const wchar_t *dev)
         return false;
     }
     for (size_t i = 0; i < len; ++i) {
-        if (s[i] != dev[i]) {
+        if (toupper(s[i]) != toupper(dev[i])) {
             return false;
         }
     }
@@ -1198,7 +1198,7 @@ static void print_help(void)
     printf("\n");
     printf("Options:\n");
     printf("  -l                                       List available devices\n");
-    printf("  -d DEVICE                                Specify which device to use\n");
+    printf("  -d DEVICE_SERIAL_NUMBER                  Specify which device to use with a serial number (format: 00:00:00:00:00:00)\n");
     printf("  -w                                       Wait for shell command to complete (monitor only)\n");
     printf("  -h --help                                Show this help message\n");
     printf("  -v --version                             Show version\n");
